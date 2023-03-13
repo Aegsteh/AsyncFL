@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class CNN1(nn.Module):
+class CNN3(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=5,stride=1,padding=2)
