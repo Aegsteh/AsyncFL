@@ -1,0 +1,15 @@
+{
+    "client": {
+        "model": "CNN1",
+        "dataset": "MNIST",
+        "loss function":"CrossEntropy",
+        "batch_size" : 8,
+        "local epoch":60,
+        "optimizer":{
+            "method":"SGD",
+            "lr":0.01,
+            "momentum":0.9
+        }
+    },
+    "device":"gpu"
+}
