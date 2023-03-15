@@ -2,14 +2,22 @@
     "client": {
         "model": "CNN1",
         "dataset": "MNIST",
-        "loss function":"CrossEntropy",
-        "batch_size" : 8,
-        "local epoch":60,
-        "optimizer":{
-            "method":"SGD",
-            "lr":0.01,
-            "momentum":0.9
+        "loss function": "CrossEntropy",
+        "batch_size": 8,
+        "local epoch": 60,
+        "optimizer": {
+            "method": "SGD",
+            "lr": 0.01,
+            "momentum": 0.9
         }
     },
-    "device":"gpu"
+    "global":{
+        "n_clients" : 10
+    },
+    "device": "gpu",
+    "data_distribution": {
+        "iid" : false,
+        "customize": true,
+        "cus_distribution": [2,2,2,2,2,2,2,2,2,2]
+    }
 }

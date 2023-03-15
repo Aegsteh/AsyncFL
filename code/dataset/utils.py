@@ -1,7 +1,7 @@
 from torchvision import transforms
 
 
-def get_default_data_transforms(name, train=True, verbose=True):
+def get_default_data_transforms(name, train=True, verbose=False):
     name = name.lower()
     transforms_train = {
         'mnist': transforms.Compose([
