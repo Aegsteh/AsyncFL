@@ -12,8 +12,11 @@ from dataset.CustomerDataset import CustomerDataset
 from dataset.utils import get_default_data_transforms
 import numpy as np
 
+from compressor.topk import TopkCompressor
+from compressor import NoneCompressor
+
 class baseClient(threading.Thread):
-    def __init__(self,cid,dataset,client_config,device):
+    def __init__(self,cid,dataset,client_config,compressor_config,device):
         super().__init__()
         self.cid = cid          # the id of client
 
@@ -50,6 +53,9 @@ class baseClient(threading.Thread):
         
         # training device
         self.device = device            # training device (cpu or gpu)
+
+        # receiver
+        self.receiver = ClientReceiver(compressor_config)
     
     def run(self):          # run the client process
         self.update()
@@ -115,3 +121,61 @@ class baseClient(threading.Thread):
         self.y_train = label[:train_num]            # the label of training set
         self.x_test = data[train_num:]               # the data of testing set
         self.y_test = label[train_num:]             # the label of testing set
+    
+    def receive(self,model_params):
+        decompress_model_params = self.receiver.receive(model_params)
+        self.model.load_state_dict(decompress_model_params)
+
+    # def get_receiver(self):
+    #     return self.receiver
+    
+    def get_model_params(self):
+        return self.model.state_dict()
+
+class ClientSender:
+    '''
+    1. send local model to server
+    2. equiped with gradient compression, compress gradient when sending
+    '''
+    def __init__(self,compressor_config):
+        self.compressor_config = compressor_config["uplink"]
+        self.compressor = self.get_crompressor(self.compressor_config)
+
+    def get_crompressor(self,compressor_config):
+        compressor_method = compressor_config["method"]
+        if compressor_method == 'topk':
+            return TopkCompressor(compressor_config["param"]["cr"])
+        elif compressor_method == 'None':
+            return NoneCompressor()
+
+
+class ClientReceiver:
+    '''
+    1. receive global model and keep it
+    2. equiped with gradient compression, decompress gradient when receiving
+    '''
+    def __init__(self, compressor_config):
+        self.compressor_config = compressor_config["downlink"]
+        self.compressor = self.get_crompressor(self.compressor_config)
+        self.receive_model_params = {}      # received compressed model parameters from server
+
+    
+    def get_crompressor(self,compressor_config):
+        compressor_method = compressor_config["method"]
+        if compressor_method == 'topk':
+            return TopkCompressor(compressor_config["params"]["cr"])
+        elif compressor_method == 'None':
+            return NoneCompressor()
+    
+    def receive(self,model_params):
+        self.receive_model_params = model_params
+        self.decompress_model_params = self.decompress_all(model_params)
+        return self.decompress_model_params
+    
+    def decompress_all(self,model_params):
+        decompress_model_params = {}
+        for name,comprssed_and_attribute in model_params.items():
+            compressed_model,attribute = comprssed_and_attribute
+            decompress_model_param = self.compressor.decompress(compressed_model,attribute)
+            decompress_model_params[name] = decompress_model_param
+        return decompress_model_params
