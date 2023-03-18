@@ -14,6 +14,12 @@ class CNN1(nn.Module):
         self.fc1 = nn.Linear(800, 256)
         self.fc2 = nn.Linear(256, 10)
 
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, mean=0, std=1)
+            elif isinstance(m,nn.Linear):
+                 nn.init.kaiming_normal_(m.weight)
+
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
@@ -36,6 +42,11 @@ class CNN3(nn.Module):
         self.conv2 = nn.Conv2d(32, 32, kernel_size=5)
         self.fc1 = nn.Linear(800, 256)
         self.fc2 = nn.Linear(256, 10)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, mean=0, std=1)
+            elif isinstance(m,nn.Linear):
+                 nn.init.kaiming_normal_(m.weight)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
