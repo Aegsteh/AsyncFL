@@ -6,6 +6,8 @@ import tools.utils
 from tools import jsonTool
 from tools.IID import split_data
 
+from server.AsyncServer import AsyncServer
+
 
 if __name__ == "__main__":
     # load config
@@ -13,9 +15,12 @@ if __name__ == "__main__":
     client_config = config["client"]                            # get client's config
     data_distribution_config = config["data_distribution"]
     global_config = config["global"]
+    client_config["model"] = global_config["model"]             # add model config to client
 
     device = tools.utils.get_device(config["device"])               # get training device according to os platform, gpu or cpu
     n_clients = global_config["n_clients"]
+
+    compressor_config = config["compressor"]        # gradient compression config
 
     
     # dataset
@@ -29,4 +34,12 @@ if __name__ == "__main__":
         clients += [baseClient(cid=i,
                         dataset=split[i],
                         client_config=client_config,
+                        compressor_config=compressor_config,
                         device=device)]
+    
+    # server
+    server = AsyncServer(global_config=global_config,
+                        compressor_config=compressor_config,
+                        clients=clients,
+                        device=device)
+    
