@@ -1,11 +1,11 @@
 {
     "client": {
         "loss function": "CrossEntropy",
-        "batch_size": 8,
+        "batch_size": 200,
         "local epoch": 1,
         "optimizer": {
             "method": "SGD",
-            "lr": 0.001,
+            "lr": 0.0001,
             "momentum": 0.9
         }
     },
@@ -16,11 +16,11 @@
         "updater":{
             "method": "single",
             "params":{
-                "alpha": 0.3
+                "alpha": 1
             }
         },
         "epoch": 100,
-        "n_clients" : 10,
+        "n_clients" : 1,
         "schedule":{
             "method" : "random",
             "params":{
@@ -30,13 +30,13 @@
     },
     "device": "gpu",
     "data_distribution": {
-        "iid" : false,
+        "iid" : true,
         "customize": false,
         "cus_distribution": [2,2,2,2,2,2,2,2,2,2]
     },
     "compressor":{
         "uplink":{
-            "method":"topk",
+            "method":"None",
             "params":{
                 "cr": 0.01,
                 "error_feedback":true

@@ -47,10 +47,14 @@ class BaseClient(threading.Thread):
         # model
         self.model_name = client_config["model"]              
         self.model = self.init_model().to(device)       # mechine learning model
-        self.model_weight = self.model.state_dict()
-        self.model_param_buffer = copy.deepcopy(self.model).state_dict()    # save model parameter received from server
-        self.model_old = copy.deepcopy(self.model).state_dict()
-        self.gradient = copy.deepcopy(self.model).state_dict()
+
+        self.W = {name : value for name, value in self.model.named_parameters()}
+        self.dW_compressed = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
+        self.dW = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
+        self.A = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
+        self.W_buffer = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}    # save model parameter received from server
+        self.W_old = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
+        
         self.model_timestamp = 0        # timestamp, to compute staleness for server
         self.transmit_dict = {}
 
@@ -85,21 +89,21 @@ class BaseClient(threading.Thread):
                 # lock client
                 self.client_lock.acquire()    # lock the client to prevent data in client for modifying
                 # receive global model and set local model
-                self.model.load_state_dict(self.model_param_buffer, strict=True)  # load weight from buffer
+                tl.copy_weight(self.W,self.W_buffer)  # load weight from buffer
                 # print("Client {}'s model has loaded in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
                 
                 # local training
-                self.model_old = copy.deepcopy(self.model_weight)
+                tl.copy_weight(self.W_old,self.W)
                 # print("Client {} is training in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
                 self.update()           # local training
-                print("Client {} training finishes in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
-                tl.subtract_(self.gradient,self.model_weight,self.model_old)     # gradient computation
+                # print("Client {} training finishes in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
+                tl.subtract_(self.dW,self.W,self.W_old)     # gradient computation
 
                 # transmit to server (simulate network delay)
-                self.transmit_dict["weight"] = self.gradient
+                self.transmit_dict["weight"] = self.dW
                 self.transmit_dict["timestamp"] = self.model_timestamp
                 time.sleep(self.delay)      # simulate network delay
-                self.send(self.transmit_dict)        # send gradient to server
+                self.send(self.transmit_dict,self.dW_compressed)        # send gradient to server
                 self.set_selected_event(False)      # set selected false, sympolize the client isn't on training
                 self.client_lock.release()        # unlock training lock
             else:
@@ -125,16 +129,18 @@ class BaseClient(threading.Thread):
             loss.backward()                 # backward, compute gradient
             self.optimizer.step()           # update
 
-            train_loss += loss.item() * features.size(0)         # compute total loss
+            train_loss += loss.item()         # compute total loss
             _, prediction = torch.max(outputs.data, 1)                  # get prediction label
             train_acc += torch.sum(prediction == labels.data)           # compute training accuracy
             train_num += self.train_loader.batch_size
         
         train_acc = train_acc / train_num              # compute average accuracy and loss
-        train_loss = train_loss / train_num
-        print("Client {}, Global Epoch {}, Train Accuracy: {} , TrainLoss: {}".format(self.cid,self.model_timestamp["t"], train_acc, train_loss))
-        return copy.deepcopy(self.model)
-
+        train_loss = train_loss / self.epoch_num
+        print("Client {}, Global Epoch {}, Train Accuracy: {} , TrainLoss: {}".format(self.cid,self.model_timestamp, train_acc, train_loss))
+    
+    def synchronize_with_server(self,server):
+        tl.copy_weight(target=self.W, source=server.W)
+    
     def init_model(self):
         if self.model_name == 'CNN1':
             return CNN1()
@@ -180,20 +186,18 @@ class BaseClient(threading.Thread):
         # self.model_lock.acquire()           # start changing model
         self.model_timestamp = transmit_dict["timestamp"]       # timestamp of global model
         
-        print("Client {} has been selected in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
+        print("Client {} has been selected in global epoch {}\n".format(self.cid,self.model_timestamp))
         
-        model_weight = transmit_dict["weight"] 
-        model_weight = copy.deepcopy(model_weight)    
-        decompress_model_params = self.receiver.receive(model_weight)   # receive compress model from server and decompress
-        self.model_param_buffer = decompress_model_params       # save decompress model into buffer
+        model_weight = transmit_dict["weight"]     
+        decompress_model_weight = self.receiver.receive(model_weight)   # receive compress model from server and decompress
+        tl.copy_weight(self.W_buffer, decompress_model_weight)      # save decompress model into buffer
         # print("Client {}'s model has been decompressed in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
         # self.model_lock.release()           # changing model finished
 
         self.client_lock.release()      # unlock client
 
-    def send(self,transmit_dict):
-        transmit_dict = copy.deepcopy(transmit_dict)
-        self.sender.send_to_server(self.server,transmit_dict)
+    def send(self,transmit_dict,dW_compressed):
+        self.sender.send_to_server(self.server,transmit_dict,dW_compressed)
 
     def get_model_params(self):
         return self.model.state_dict()
@@ -226,10 +230,10 @@ class ClientSender:
         elif compressor_method == 'None':
             return NoneCompressor()
 
-    def send_to_server(self,server,transmit_dict):
-        weight = transmit_dict["weight"]
-        model_weight = weight       # get parameter dict
-        compress_model_params = self.compress_all(model_weight) #  get client model parameter dict
+    def send_to_server(self,server,transmit_dict,dW_compressed):
+        dW = transmit_dict["weight"]
+        compress_model_params = self.compress_all(dW) #  get client model parameter dict
+        # tl.copy_weight(dW_compressed,compress_model_params)
         transmit_dict["weight"] = compress_model_params
         server.receive(transmit_dict)
     

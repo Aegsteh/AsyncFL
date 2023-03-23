@@ -30,6 +30,8 @@ class AsyncSingleScheduleClass(ScheduleClass):
     def schedule(self,clients):
         selected_clients = []
         for cid,client in clients.items():      # clients is a client dict
+            client.client_lock.acquire()        # visit critical variable "selected_event"
             if not client.selected_event.is_set():
                 selected_clients.append(client)
+            client.client_lock.release()
         return selected_clients
