@@ -1,31 +1,36 @@
 {
     "client": {
-        "loss function": "CrossEntropy",
-        "batch_size": 200,
+        "batch_size": 64,
         "local epoch": 1,
         "optimizer": {
             "method": "SGD",
-            "lr": 0.0001,
+            "lr": 0.001,
             "momentum": 0.9
         }
     },
     "global":{
         "model": "CNN1",
         "dataset": "MNIST",
+        "loss function": "CrossEntropy",
+        "n_clients": 10,
         "mode": "async",
         "updater":{
-            "method": "single",
+            "method": "period",
             "params":{
                 "alpha": 1
             }
         },
-        "epoch": 100,
-        "n_clients" : 1,
+        "epoch": 5,
+        "epoch_time": 5,
         "schedule":{
             "method" : "random",
             "params":{
                 "proportion" : 0.8
             }
+        },
+        "delay" :{
+            "mode" : "base",
+            "param": 0.4
         }
     },
     "device": "gpu",
@@ -49,5 +54,8 @@
                 "error_feedback": true
             }
         }
+    },
+    "result":{
+        "path": "CRandStaleness"
     }
 }

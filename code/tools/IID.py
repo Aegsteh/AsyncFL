@@ -37,6 +37,12 @@ def split_data(data_distribution_config,n_clients,train_set):
         split = niid_customize_split(n_clients,train_set,data_distribution_config["cus_distribution"])
     return split
 
+def get_global_data(test_set):
+    x_test = test_set.data            # get data of test samples
+    y_test = test_set.targets
+    test_set = (x_test,y_test)
+    return test_set
+
 # split data uniformly
 def iid_split(n_clients,train_set):
     num_train = len(train_set)          # get number of training samples

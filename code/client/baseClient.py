@@ -20,7 +20,7 @@ from compressor import NoneCompressor
 import tools.tensorTool as tl
 
 class BaseClient(threading.Thread):
-    def __init__(self,cid,dataset,client_config,compressor_config,device):
+    def __init__(self,cid,dataset,client_config,compressor_config,delay,device):
         super().__init__()
         self.cid = cid          # the id of client
 
@@ -29,7 +29,7 @@ class BaseClient(threading.Thread):
         self.lr = client_config["optimizer"]["lr"]      # learning rate
         self.momentum = client_config["optimizer"]["momentum"]  # momentum
         self.batch_size = client_config["batch_size"]       # batch size
-        self.delay = 1              # simulate network delay
+        self.delay = delay * compressor_config["uplink"]["params"]["cr"]          # simulate network delay
 
         # dataset
         self.dataset_name = client_config["dataset"]
@@ -108,9 +108,11 @@ class BaseClient(threading.Thread):
                 self.client_lock.release()        # unlock training lock
             else:
                 self.selected_event.wait()
+        print("Client {} Exit.\n".format(self.cid))
                 
 
     def update(self):
+        start_time = time.time()
         self.model.train()
         train_acc = 0.0
         train_loss = 0.0
@@ -118,11 +120,10 @@ class BaseClient(threading.Thread):
         for epoch in range(self.epoch_num):
             try: # Load new batch of data
                 features, labels = next(self.epoch_loader)
-                features = features.to(self.device)
-                labels = labels.to(self.device)
             except: # Next epoch
-                pass
-
+                self.epoch_loader = iter(self.train_loader)
+                features, labels = next(self.epoch_loader)
+            features, labels = features.to(self.device),labels.to(self.device)
             self.optimizer.zero_grad()  # set accumulate gradient to zero
             outputs = self.model(features)  # predict
             loss = self.loss_function(outputs, labels)      # compute loss
@@ -136,7 +137,8 @@ class BaseClient(threading.Thread):
         
         train_acc = train_acc / train_num              # compute average accuracy and loss
         train_loss = train_loss / self.epoch_num
-        print("Client {}, Global Epoch {}, Train Accuracy: {} , TrainLoss: {}".format(self.cid,self.model_timestamp, train_acc, train_loss))
+        end_time = time.time()
+        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {}".format(self.cid,self.model_timestamp, train_acc, train_loss, end_time - start_time))
     
     def synchronize_with_server(self,server):
         tl.copy_weight(target=self.W, source=server.W)
@@ -186,7 +188,7 @@ class BaseClient(threading.Thread):
         # self.model_lock.acquire()           # start changing model
         self.model_timestamp = transmit_dict["timestamp"]       # timestamp of global model
         
-        print("Client {} has been selected in global epoch {}\n".format(self.cid,self.model_timestamp))
+        # print("Client {} has been selected in global epoch {}\n".format(self.cid,self.model_timestamp))
         
         model_weight = transmit_dict["weight"]     
         decompress_model_weight = self.receiver.receive(model_weight)   # receive compress model from server and decompress

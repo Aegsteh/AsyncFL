@@ -5,6 +5,8 @@ from model.CNN import CNN3
 import threading
 import queue
 import copy
+import time
+import schedule
 
 from compressor.topk import TopkCompressor
 from compressor import NoneCompressor
@@ -23,6 +25,12 @@ class AsyncServer:
         self.global_stop_event.clear()
         self.server_lock = threading.Lock()
 
+        # global_config
+        self.global_config = global_config
+
+        # device
+        self.device = device
+
         # model
         self.model_name = global_config["model"]              
         self.model = self.init_model().to(device)       # mechine learning model
@@ -30,9 +38,23 @@ class AsyncServer:
         self.W_compress = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
         self.dW = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
 
+        # dataset
+        self.dataset_name = global_config["dataset"]
+        self.dataset = dataset
+        # self.batch_size = 8 
+        # self.transforms_train, self.transforms_eval = get_default_data_transforms(self.dataset_name)
+        # self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.dataset[0], self.dataset[1], self.transforms_eval), 
+        #                                                 batch_size=self.batch_size,
+        #                                                 shuffle=False)   
+        # self.epoch_loader = iter(self.test_loader)
+
         # global iteration
         self.current_epoch = {"t":0}        # indicate the version of global model
         self.total_global_epoch = global_config["epoch"]
+
+        # loss function
+        self.loss_fun_name = global_config["loss function"]        # loss function
+        self.loss_func = self.init_loss_fun()
 
         # Parameter collections
         self.parameter_collection = ParameterCollection()
@@ -52,11 +74,13 @@ class AsyncServer:
         # updater
         self.updater_config = global_config["updater"]
         self.updater = ServerUpdater(updater_config=self.updater_config,
+                                     server=self,
                                      parameter_collection=self.parameter_collection,
                                      current_epoch=self.current_epoch,
                                      total_epoch=self.total_global_epoch,
                                      server_lock=self.server_lock,
-                                     global_W=self.W)
+                                     global_W=self.W,
+                                     global_stop_event=self.global_stop_event)
 
         # scheduler
         self.schedule_config = global_config["schedule"]
@@ -66,6 +90,7 @@ class AsyncServer:
                                               async_client_manager=self.global_manager,
                                               current_epoch=self.current_epoch,
                                               server_lock=self.server_lock,
+                                              global_stop_event=self.global_stop_event,
                                               total_epoch=self.total_global_epoch)      # create a scheduler object
 
     def init_model(self):
@@ -73,20 +98,18 @@ class AsyncServer:
             return CNN1()
         elif self.model_name == 'CNN3':
             return CNN3()
+        
+    def init_loss_fun(self):
+        if self.loss_fun_name == 'CrossEntropy':
+            return torch.nn.CrossEntropyLoss()
+        elif self.loss_fun_name == 'MSE':
+            return torch.nn.MSELoss()
     
     def scatter_init_model(self):
         for cid,client in self.global_manager.get_clients_dict().items():
             client.synchronize_with_server(self)
-            client.model_timestamp = self.current_epoch
-            # print(client.model_timestamp is self.current_epoch)
-        # dict1 =self.global_manager.get_clients_dict()
-        # print(dict1[0].model.state_dict()["conv1.weight"])
-        # print(dict1[0].model.state_dict()["conv1.weight"] is dict1[1].model.state_dict()["conv1.weight"])
-        # clients = self.global_manager.get_clients_dict()       # get all clients
-        # transmit_dict = {}              # for future transmit global information
-        # transmit_dict["weight"] = self.model.state_dict()       # transmitted model weight(gradient weight or global model weight)
-        # transmit_dict["timestamp"] = self.current_epoch         # set timestamp to futher compute stalenss
-        # self.sender.send_to_multi_clients(clients,transmit_dict)
+            model_timestamp = copy.deepcopy(self.current_epoch)["t"]
+            client.model_timestamp = model_timestamp
     
     def receive(self,transmit_dict):
         self.server_lock.acquire()      # lock
@@ -107,49 +130,134 @@ class AsyncServer:
         print("Transmit initialized global model to all clients\n")
 
         # start scheduler and updater thread
-        self.scheduler.start()
-        self.updater.start()
+        # self.scheduler.start()
+        # self.updater.start()
 
         # Start Training
         self.global_manager.start_clients()     # start all clients fro global training
 
+        # start updater and scheduler
+        schedule.every(self.global_config["epoch_time"]).seconds.do(self.updater.update_fun)
+        schedule.every(self.global_config["epoch_time"]).seconds.do(self.scheduler.run)
+        while self.current_epoch["t"] < self.total_global_epoch:
+            schedule.run_pending() 
+
         # Process join
-        self.global_manager.join_clients()      # join all clients to train
-        self.updater.join()                 # updater join
-        self.scheduler.join()               # scheduler join
+        # self.global_manager.join_clients()      # join all clients to train
+        # self.updater.join()                 # updater join
+        # self.scheduler.join()               # scheduler join
+        self.global_stop_event.set()
+        
+        # Exit
+        print("Global Updater Exit.\n")
+        self.global_manager.stop_clients()
 
 class ServerUpdater(threading.Thread):
-    def __init__(self,updater_config,parameter_collection,current_epoch,total_epoch,server_lock,global_W):
+    def __init__(self,updater_config,server,parameter_collection,current_epoch,total_epoch,server_lock,global_stop_event,global_W):
         threading.Thread.__init__(self)
         self.parameter_collection = parameter_collection        # save useful parameters
+
+        self.server = server
 
         self.current_epoch = current_epoch              # global current epoch
         self.total_epoch = total_epoch                  # global total epoch
 
         self.server_lock = server_lock          # server process lock
+        self.global_stop_event = global_stop_event
 
         self.W = global_W         # global model
+
+        self.accuracy_list = []
+        self.loss_list = []
+
+        self.staleness_list = []
 
         self.updater_params = updater_config["params"]
         if updater_config["method"] == "single":
             self.update_fun = self.single_update
+        elif updater_config["method"] == "period":
+            self.update_fun = self.time_update
 
-    def single_update(self, global_W, local_W, params):
+    def single_model_update(self, global_W, local_W, params):
         alpha = params["alpha"]
         for name in global_W:
             global_W[name].data = (1 - alpha)  * global_W[name].data.clone() + alpha * local_W[name].data.clone()
     
-    def run(self):
+    def time_update(self):
+        # start timer
+        if self.current_epoch["t"] < self.total_epoch:        # if global training is going on
+            self.server_lock.acquire()          # lock server to update global model
+
+            local_gradients = []           # save multi local_W
+            if not self.parameter_collection.decompress_queue_empty():
+                while not self.parameter_collection.decompress_queue_empty():
+                    local_gradient = self.parameter_collection.pick_decompress_model()     # get local model to update
+                    local_timestamp = self.parameter_collection.pick_timestamp()        # get local timestamp to compute staleness
+                    local_gradients.append(local_gradient)
+                    self.staleness_list.append(self.current_epoch["t"] - local_timestamp)
+                
+                tl.average(target=self.server.dW, sources=local_gradients)
+                tl.add(target=self.W, source=self.server.dW)
+
+                self.eval_model()
+            
+            self.current_epoch["t"] += 1
+            print("Current Epoch: {}".format(self.current_epoch["t"]))
+            self.server_lock.release()
+
+    def single_update(self):
         while self.current_epoch["t"] < self.total_epoch:        # if global training is going on
             if not self.parameter_collection.decompress_queue_empty():      # if server has received model from client
                 self.server_lock.acquire()          # lock server to update global model
                 local_W = self.parameter_collection.pick_decompress_model()     # get local model to update
                 local_timestamp = self.parameter_collection.pick_timestamp()        # get local timestamp to compute staleness
-                self.update_fun(self.W,local_W=local_W,params=self.updater_params)    # update
+                
+                alpha = self.updater_params["alpha"]                # update
+                for name in self.W:
+                    self.W[name].data = (1 - alpha)  * self.W[name].data.clone() + alpha * local_W[name].data.clone()
+                
                 staleness = self.current_epoch["t"] - local_timestamp        # compute staleness
+                self.staleness_list.append(staleness)
                 print("staleness = {}\n".format(staleness))
+
+                self.eval_model()
+
                 self.current_epoch["t"] = self.current_epoch["t"] + 1     # update global epoch
                 self.server_lock.release()
+                time.sleep(0.01)
+            else:
+                time.sleep(0.01)
+        print("Global Updater Exit.\n")
+        self.global_stop_event.set()
+
+    def run(self):
+        self.update_fun()
+
+    def eval_model(self):
+        self.server.model.eval()
+        data_loader = self.server.global_manager.test_loader
+        test_correct = 0.0
+        test_loss = 0.0
+        for data in data_loader:
+            features, labels = data
+            features = features.to(self.server.device)
+            labels = labels.to(self.server.device)
+            outputs = self.server.model(features)  # predict
+            _, id = torch.max(outputs.data, 1)
+            test_loss += self.server.loss_func(outputs, labels).item()
+            test_correct += torch.sum(id == labels.data).cpu().numpy()
+        accuracy = test_correct / len(data_loader)
+        loss = test_loss / len(data_loader)
+
+        self.accuracy_list.append(accuracy)
+        self.loss_list.append(loss)
+        print("Server: Global Epoch {}, Test Accuracy: {} , Test Loss: {}".format(self.current_epoch["t"], accuracy, loss))
+    
+    def get_accuracy_and_loss_list(self):
+        return self.accuracy_list, self.loss_list
+
+    def get_staleness_list(self):
+        return self.staleness_list
 
 
 class AsyncGlobalManager:       # Manage clients and global information
@@ -168,8 +276,8 @@ class AsyncGlobalManager:       # Manage clients and global information
         # global test dataset
         self.dataset_name = global_config["dataset"]
         self.dataset = dataset      # the test dataset of server, a list with 2 elements, the first is all data, the second is all label
-        self.x_test = dataset.data
-        self.y_test = dataset.targets
+        self.x_test = dataset[0]
+        self.y_test = dataset[1]
         self.transforms_train, self.transforms_eval = get_default_data_transforms(self.dataset_name)
         self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_test, self.y_test, self.transforms_eval), 
                                                         batch_size=8,
@@ -218,16 +326,24 @@ class AsyncGlobalManager:       # Manage clients and global information
         clients_list = self.get_clients_dict()      # get all clients
         for cid,client_thread in clients_list.items():
             client_thread.join()               # start all clients
+    
+    def stop_clients(self):
+        clients_list = self.get_clients_dict()      # get all clients
+        for cid,client_thread in clients_list.items():
+            client_thread.stop_event.set()               # start all clients
 
 
 class AsyncGlobalScheduler(threading.Thread):
-    def __init__(self,clients ,server,schedule_config, async_client_manager,current_epoch,server_lock,total_epoch):
+    def __init__(self, clients, server, schedule_config, async_client_manager,current_epoch,server_lock,global_stop_event,total_epoch):
         threading.Thread.__init__(self)
         self.server = server        # set server
 
         self.current_epoch = current_epoch
         self.total_epoch = total_epoch
+
         self.server_lock = server_lock
+        self.global_stop_event = global_stop_event
+
         self.schedule_config = schedule_config
         scheduleClass = find_ScheduleClass(schedule_config["method"])
         self.schduleClass = scheduleClass(schedule_config)
@@ -241,21 +357,21 @@ class AsyncGlobalScheduler(threading.Thread):
         return selected_clients
     
     def run(self):
-        while self.current_epoch["t"] < self.total_epoch:        # if global training is going on
+        if self.current_epoch["t"] < self.total_epoch:        # if global training is going on
             selected_clients = self.client_selection()      # it is likely that there are one or more clients
             if len(selected_clients) == 0:
-                continue
+                return
             self.server_lock.acquire()      # lock the server to transmition
             transmit_dict = {}      # transmit dict, including global weight, timestamp of global weight
             for selected_client in selected_clients:
                 transmit_dict = {}
                 tl.copy_weight(self.server.W_compress,self.server.W) # get global weight
                 transmit_dict["weight"] = self.server.W_compress
-                timestamp = self.current_epoch["t"]
+                timestamp = copy.deepcopy(self.current_epoch)["t"]
                 transmit_dict["timestamp"] = timestamp
                 self.sender.send_to_one_client(selected_client,transmit_dict)      # send to selected client
             self.server_lock.release()      # unlock
-        # TODO: stop all clients
+
 
 
 class ServerSender:
