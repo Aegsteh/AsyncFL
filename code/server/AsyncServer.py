@@ -1,6 +1,5 @@
 import torch
-from model.CNN import CNN1
-from model.CNN import CNN3
+from model.CNN import CNN1,CNN3,VGG11s,VGG11
 
 import threading
 import queue
@@ -151,6 +150,10 @@ class AsyncServer:
             return CNN1()
         elif self.model_name == 'CNN3':
             return CNN3()
+        elif self.model_name == 'VGG11s':
+            return VGG11s()
+        elif self.model_name == 'VGG11':
+            return VGG11()
         
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

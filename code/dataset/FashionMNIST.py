@@ -16,6 +16,3 @@ class FashionMNIST:
 
     def get_train_dataset(self):
         return self.train_datasets
-
-if __name__ == '__main__':
-    FashionMNIST()

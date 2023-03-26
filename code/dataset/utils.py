@@ -1,4 +1,7 @@
 from torchvision import transforms
+from dataset.CIFAR10 import CIFAR10
+from dataset.FashionMNIST import FashionMNIST
+from dataset.MNIST import MNIST
 
 
 def get_default_data_transforms(name, train=True, verbose=False):
@@ -11,7 +14,7 @@ def get_default_data_transforms(name, train=True, verbose=False):
             transforms.ToTensor(),
             transforms.Normalize((0.06078,), (0.1957,))
         ]),
-        'fashionmnist': transforms.Compose([
+        'fmnist': transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((32, 32)),
             # transforms.RandomCrop(32, padding=4),
@@ -40,7 +43,7 @@ def get_default_data_transforms(name, train=True, verbose=False):
             transforms.ToTensor(),
             transforms.Normalize((0.06078,), (0.1957,))
         ]),
-        'fashionmnist': transforms.Compose([
+        'fmnist': transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
@@ -66,3 +69,11 @@ def get_default_data_transforms(name, train=True, verbose=False):
         print()
 
     return (transforms_train[name], transforms_eval[name])
+
+def get_dataset(dataset_name):
+    if dataset_name == 'MNIST':
+        return MNIST()
+    elif dataset_name == 'FMNIST':
+        return FashionMNIST()
+    elif dataset_name == 'CIFAR10':
+        return CIFAR10()

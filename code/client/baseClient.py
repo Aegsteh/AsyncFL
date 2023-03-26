@@ -7,8 +7,7 @@ os.chdir(sys.path[0])
 import threading
 
 from multiprocessing import Process
-from model.CNN import CNN1
-from model.CNN import CNN3
+from model.CNN import CNN1,CNN3,VGG11s,VGG11
 import random
 from dataset.CustomerDataset import CustomerDataset
 from dataset.utils import get_default_data_transforms
@@ -167,16 +166,18 @@ class BaseClient(threading.Thread):
         print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {}\n".format(self.cid,self.model_timestamp, train_acc, train_loss, end_time - start_time,self.compression_config["uplink"]["params"]["cr"]))
     
     def synchronize_with_server(self,server):
-        # self.client_lock.acquire()
         self.model_timestamp = server.current_epoch
         tl.copy_weight(target=self.W, source=server.W)
-        # self.client_lock.release()
     
     def init_model(self):
         if self.model_name == 'CNN1':
             return CNN1()
         elif self.model_name == 'CNN3':
             return CNN3()
+        elif self.model_name == 'VGG11s':
+            return VGG11s()
+        elif self.model_name == 'VGG11':
+            return VGG11()
     
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

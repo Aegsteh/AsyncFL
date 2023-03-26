@@ -1,6 +1,6 @@
 from client.BaseClient import BaseClient
-from dataset.CIFAR10 import CIFAR10
-from dataset.MNIST import MNIST
+
+import dataset.utils as du
 import torch
 import tools.utils
 from tools import jsonTool
@@ -31,10 +31,10 @@ if __name__ == "__main__":
         cr = i / 10
         compressor_config["uplink"]["params"]["cr"] = cr
         # dataset
-        mnist = MNIST()               # load whole dataset
-        train_set = mnist.get_train_dataset()               # get global training set
+        dataset = du.get_dataset(global_config["dataset"])               # load whole dataset
+        train_set = dataset.get_train_dataset()               # get global training set
         split = split_data(data_distribution_config, n_clients, train_set)
-        test_set = mnist.get_test_dataset()
+        test_set = dataset.get_test_dataset()
         test_set = get_global_data(test_set)
 
         # simulate delay

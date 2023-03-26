@@ -9,8 +9,8 @@
         }
     },
     "global":{
-        "model": "CNN1",
-        "dataset": "MNIST",
+        "model": "VGG11s",
+        "dataset": "FMNIST",
         "loss function": "CrossEntropy",
         "n_clients": 5,
         "mode": "async",
