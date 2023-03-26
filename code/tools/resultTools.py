@@ -4,20 +4,18 @@ import json
 os.chdir(sys.path[0])
 
 def save_to_file(path,result):
-    f = open(path,'w')
-    f.write(str(result))
-    f.close()
+    with open(path,'w') as f:
+        for i in result:
+            f.write(i+'\n')
 
 def save_results(root=None,dir_name=None,config=None,global_loss=None,global_acc=None,staleness=None):
-    # TODO: 列出所有需要保存的指标，并写入函数，还要写出保存路径
-
     dir_root = os.path.join('../results', root)          # experiment path
     dir_path = os.path.join(dir_root, dir_name) 
 
     if not config is None:      # write config to json
         config_file_name = 'config.json'
         config_file_path = os.path.join(dir_path,config_file_name)
-        if not os.path.exists(dir_root):
+        if not os.path.exists(dir_path):
             os.makedirs(dir_path)
         with open(config_file_path, 'w') as f:
             json.dump(config, f)

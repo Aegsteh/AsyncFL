@@ -1,9 +1,26 @@
 from abc import ABC,abstractmethod
 import numpy as np
 import random
+
 def find_ScheduleClass(method):
     if method == "random":
         return AsyncSingleScheduleClass
+
+def schedule(clients,schedule_config):
+    participating_clients = []
+    if schedule_config["method"] == "idle":
+        participating_clients = idle_schedule(clients,schedule_config)
+    return participating_clients
+
+def idle_schedule(clients,shedule_config):
+    '''
+    select clients which is being idle time
+    '''
+    participating_clients = []
+    for client in clients:
+        if not client.selected_event.is_set():
+            participating_clients.append(client)
+    return participating_clients
 
 class ScheduleClass(ABC):
     def __init__(self,schedule_config):

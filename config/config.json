@@ -12,7 +12,7 @@
         "model": "CNN1",
         "dataset": "MNIST",
         "loss function": "CrossEntropy",
-        "n_clients": 10,
+        "n_clients": 5,
         "mode": "async",
         "updater":{
             "method": "period",
@@ -20,17 +20,17 @@
                 "alpha": 1
             }
         },
-        "epoch": 5,
-        "epoch_time": 5,
+        "epoch": 100,
+        "epoch_time": 8,
         "schedule":{
-            "method" : "random",
+            "method" : "idle",
             "params":{
                 "proportion" : 0.8
             }
         },
         "delay" :{
             "mode" : "base",
-            "param": 0.4
+            "param": 5
         }
     },
     "device": "gpu",
@@ -41,9 +41,9 @@
     },
     "compressor":{
         "uplink":{
-            "method":"None",
+            "method":"topk",
             "params":{
-                "cr": 0.01,
+                "cr": 0.1,
                 "error_feedback":true
             }
         },

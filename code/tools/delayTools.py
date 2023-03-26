@@ -10,5 +10,5 @@ def generate_delays(global_config):
     delays = []
     if mode == "base":
         for i in range(n_clients):
-            delays.append(param * (i + 1) / 2)
+            delays.append(param * (5 * i + 1) / 2)
     return delays

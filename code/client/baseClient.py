@@ -16,20 +16,31 @@ import numpy as np
 
 from compressor.topk import TopkCompressor
 from compressor import NoneCompressor
+import compressor.compression_utils as comp
 
 import tools.tensorTool as tl
 
 class BaseClient(threading.Thread):
-    def __init__(self,cid,dataset,client_config,compressor_config,delay,device):
+    def __init__(self,cid,dataset,client_config,compression_config,delay,device):
         super().__init__()
         self.cid = cid          # the id of client
+
+        # model
+        self.model_name = client_config["model"]              
+        self.model = self.init_model().to(device)       # mechine learning model
+
+        self.W = {name : value for name, value in self.model.named_parameters()}            # model weight reference
+        self.dW_compressed = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}     # compressed gradient
+        self.dW = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}                # gradient
+        self.W_old = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}             # global model before local training
+        self.A = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}                 # Error feedback
 
         # hyperparameters
         self.epoch_num = client_config["local epoch"]      # local iteration num
         self.lr = client_config["optimizer"]["lr"]      # learning rate
         self.momentum = client_config["optimizer"]["momentum"]  # momentum
         self.batch_size = client_config["batch_size"]       # batch size
-        self.delay = delay * compressor_config["uplink"]["params"]["cr"]          # simulate network delay
+        self.delay = delay          # simulate network delay
 
         # dataset
         self.dataset_name = client_config["dataset"]
@@ -42,21 +53,8 @@ class BaseClient(threading.Thread):
         self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_test, self.y_test, self.transforms_eval), 
                                                         batch_size=self.batch_size,
                                                         shuffle=False)   
-        self.epoch_loader = iter(self.train_loader) 
-
-        # model
-        self.model_name = client_config["model"]              
-        self.model = self.init_model().to(device)       # mechine learning model
-
-        self.W = {name : value for name, value in self.model.named_parameters()}
-        self.dW_compressed = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
-        self.dW = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
-        self.A = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
-        self.W_buffer = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}    # save model parameter received from server
-        self.W_old = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
         
         self.model_timestamp = 0        # timestamp, to compute staleness for server
-        self.transmit_dict = {}
 
 
         # loss function
@@ -66,21 +64,23 @@ class BaseClient(threading.Thread):
         # optimizer
         self.optimizer_hp = client_config["optimizer"]      # optimizer
         self.optimizer = self.init_optimizer()
+
+        # compressor
+        self.compression_config = compression_config
         
         # training device
         self.device = device            # training device (cpu or gpu)
 
         # receiver
-        self.receiver = ClientReceiver(compressor_config)
+        # self.receiver = ClientReceiver(compressor_config)
 
         # sender
-        self.sender = ClientSender(compressor_config)
+        # self.sender = ClientSender(compressor_config)
 
         # multiple process valuable
         self.selected_event = threading.Event()     # indicate if the client is selected
-        self.selected_event.clear()         # initialize selected as false
+        self.selected_event.set()         # initialize selected as True
         self.client_lock = threading.Lock()       # lock client when training
-        self.model_lock = threading.Lock()          # lock client when changing model weight
 
     
     def run(self):          # run the client process
@@ -88,30 +88,56 @@ class BaseClient(threading.Thread):
             if self.selected_event.is_set():     # if the client is selected by scheduler
                 # lock client
                 self.client_lock.acquire()    # lock the client to prevent data in client for modifying
-                # receive global model and set local model
-                tl.copy_weight(self.W,self.W_buffer)  # load weight from buffer
+
+                # synchronize
+                self.synchronize_with_server(self.server)
+
+                # Training mode
+                self.model.train()
+
+                # W_old = W
+                tl.copy_weight(self.W_old,self.W)
                 # print("Client {}'s model has loaded in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
                 
-                # local training
-                tl.copy_weight(self.W_old,self.W)
-                # print("Client {} is training in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
-                self.update()           # local training
-                # print("Client {} training finishes in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
+                # local training, SGD
+                self.train_model()           # local training
+
+                # dW = W - W_old
                 tl.subtract_(self.dW,self.W,self.W_old)     # gradient computation
 
+                # compress gradient
+                self.compress_weight(compression_config=self.compression_config["uplink"])
+
+                # set transmit dict
+                transmit_dict = {}
+                transmit_dict["cid"] = self.cid
+                transmit_dict["client_gradient"]= self.dW_compressed       # client gradient
+                transmit_dict["data_num"] = len(self.x_train)                          # number of data samples
+                transmit_dict["timestamp"] = self.model_timestamp
+                
                 # transmit to server (simulate network delay)
-                self.transmit_dict["weight"] = self.dW
-                self.transmit_dict["timestamp"] = self.model_timestamp
-                time.sleep(self.delay)      # simulate network delay
-                self.send(self.transmit_dict,self.dW_compressed)        # send gradient to server
+                time.sleep(self.delay * self.compression_config["uplink"]["params"]["cr"])      # simulate network delay
+                self.server.receive(transmit_dict)    # send (cid,gradient,weight,timestamp) to server
                 self.set_selected_event(False)      # set selected false, sympolize the client isn't on training
+                
                 self.client_lock.release()        # unlock training lock
             else:
                 self.selected_event.wait()
         print("Client {} Exit.\n".format(self.cid))
-                
+    
+    def compress_weight(self, compression_config=None):
+        accumulate = compression_config["params"]["error_feedback"]
+        if accumulate:
+            # compression with error accumulation     
+            tl.add(target=self.A, source=self.dW)
+            tl.compress(target=self.dW_compressed, source=self.A, compress_fun=comp.compression_function(compression_config))
+            tl.subtract(target=self.A, source=self.dW_compressed)
 
-    def update(self):
+        else: 
+            # compression without error accumulation
+            tl.compress(target=self.dW_compressed, source=self.dW, compress_fun=comp.compression_function(compression_config))
+    
+    def train_model(self):
         start_time = time.time()
         self.model.train()
         train_acc = 0.0
@@ -124,24 +150,27 @@ class BaseClient(threading.Thread):
                 self.epoch_loader = iter(self.train_loader)
                 features, labels = next(self.epoch_loader)
             features, labels = features.to(self.device),labels.to(self.device)
-            self.optimizer.zero_grad()  # set accumulate gradient to zero
-            outputs = self.model(features)  # predict
-            loss = self.loss_function(outputs, labels)      # compute loss
-            loss.backward()                 # backward, compute gradient
-            self.optimizer.step()           # update
+            self.optimizer.zero_grad()                              # set accumulate gradient to zero
+            outputs = self.model(features)                          # predict
+            loss = self.loss_function(outputs, labels)              # compute loss
+            loss.backward()                                         # backward, compute gradient
+            self.optimizer.step()                                   # update
 
-            train_loss += loss.item()         # compute total loss
-            _, prediction = torch.max(outputs.data, 1)                  # get prediction label
-            train_acc += torch.sum(prediction == labels.data)           # compute training accuracy
+            train_loss += loss.item()                               # compute total loss
+            _, prediction = torch.max(outputs.data, 1)              # get prediction label
+            train_acc += torch.sum(prediction == labels.data)       # compute training accuracy
             train_num += self.train_loader.batch_size
         
         train_acc = train_acc / train_num              # compute average accuracy and loss
-        train_loss = train_loss / self.epoch_num
+        train_loss = train_loss / train_num
         end_time = time.time()
-        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {}".format(self.cid,self.model_timestamp, train_acc, train_loss, end_time - start_time))
+        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {}\n".format(self.cid,self.model_timestamp, train_acc, train_loss, end_time - start_time,self.compression_config["uplink"]["params"]["cr"]))
     
     def synchronize_with_server(self,server):
+        # self.client_lock.acquire()
+        self.model_timestamp = server.current_epoch
         tl.copy_weight(target=self.W, source=server.W)
+        # self.client_lock.release()
     
     def init_model(self):
         if self.model_name == 'CNN1':
@@ -198,8 +227,8 @@ class BaseClient(threading.Thread):
 
         self.client_lock.release()      # unlock client
 
-    def send(self,transmit_dict,dW_compressed):
-        self.sender.send_to_server(self.server,transmit_dict,dW_compressed)
+    def send(self,server,transmit_dict):
+        server.receive(transmit_dict)
 
     def get_model_params(self):
         return self.model.state_dict()
@@ -216,69 +245,69 @@ class BaseClient(threading.Thread):
     def set_server(self,server):
         self.server = server
 
-class ClientSender:
-    '''
-    1. send local model to server
-    2. equiped with gradient compression, compress gradient when sending
-    '''
-    def __init__(self,compressor_config):
-        self.compressor_config = compressor_config["uplink"]
-        self.compressor = self.get_crompressor(self.compressor_config)
+# class ClientSender:
+#     '''
+#     1. send local model to server
+#     2. equiped with gradient compression, compress gradient when sending
+#     '''
+#     def __init__(self,compressor_config):
+#         self.compressor_config = compressor_config["uplink"]
+#         self.compressor = self.get_crompressor(self.compressor_config)
 
-    def get_crompressor(self,compressor_config):
-        compressor_method = compressor_config["method"]
-        if compressor_method == 'topk':
-            return TopkCompressor(compressor_config["params"]["cr"])
-        elif compressor_method == 'None':
-            return NoneCompressor()
+#     def get_crompressor(self,compressor_config):
+#         compressor_method = compressor_config["method"]
+#         if compressor_method == 'topk':
+#             return TopkCompressor(compressor_config["params"]["cr"])
+#         elif compressor_method == 'None':
+#             return NoneCompressor()
 
-    def send_to_server(self,server,transmit_dict,dW_compressed):
-        dW = transmit_dict["weight"]
-        compress_model_params = self.compress_all(dW) #  get client model parameter dict
-        # tl.copy_weight(dW_compressed,compress_model_params)
-        transmit_dict["weight"] = compress_model_params
-        server.receive(transmit_dict)
+#     def send_to_server(self,server,transmit_dict,dW_compressed):
+#         dW = transmit_dict["weight"]
+#         compress_model_params = self.compress_all(dW) #  get client model parameter dict
+#         # tl.copy_weight(dW_compressed,compress_model_params)
+#         transmit_dict["weight"] = compress_model_params
+#         server.receive(transmit_dict)
     
-    def compress_all(self,params):
-        compressed_model_params = {}        # all compressed model params
-        for name, param in params.items():
-            compressed_param,attribute = self.compress_one(name,param)      # one compressed model params
-            compressed_model_params[name] = (compressed_param,attribute)
-        return compressed_model_params
-
-    
-    def compress_one(self,name,param):
-        compressed_param,attribute = self.compressor.compress(param,name)
-        return compressed_param,attribute
-
-
-class ClientReceiver:
-    '''
-    1. receive global model and keep it
-    2. equiped with gradient compression, decompress gradient when receiving
-    '''
-    def __init__(self, compressor_config):
-        self.compressor_config = compressor_config["downlink"]
-        self.compressor = self.get_crompressor(self.compressor_config)
-        self.receive_model_params = {}      # received compressed model parameters from server
+#     def compress_all(self,params):
+#         compressed_model_params = {}        # all compressed model params
+#         for name, param in params.items():
+#             compressed_param,attribute = self.compress_one(name,param)      # one compressed model params
+#             compressed_model_params[name] = (compressed_param,attribute)
+#         return compressed_model_params
 
     
-    def get_crompressor(self,compressor_config):
-        compressor_method = compressor_config["method"]
-        if compressor_method == 'topk':
-            return TopkCompressor(compressor_config["params"]["cr"])
-        elif compressor_method == 'None':
-            return NoneCompressor()
+#     def compress_one(self,name,param):
+#         compressed_param,attribute = self.compressor.compress(param,name)
+#         return compressed_param,attribute
+
+
+# class ClientReceiver:
+#     '''
+#     1. receive global model and keep it
+#     2. equiped with gradient compression, decompress gradient when receiving
+#     '''
+#     def __init__(self, compressor_config):
+#         self.compressor_config = compressor_config["downlink"]
+#         self.compressor = self.get_crompressor(self.compressor_config)
+#         self.receive_model_params = {}      # received compressed model parameters from server
+
     
-    def receive(self,model_params):
-        self.receive_model_params = model_params
-        self.decompress_model_params = self.decompress_all(model_params)
-        return self.decompress_model_params
+#     def get_crompressor(self,compressor_config):
+#         compressor_method = compressor_config["method"]
+#         if compressor_method == 'topk':
+#             return TopkCompressor(compressor_config["params"]["cr"])
+#         elif compressor_method == 'None':
+#             return NoneCompressor()
     
-    def decompress_all(self,model_params):
-        decompress_model_params = {}
-        for name,comprssed_and_attribute in model_params.items():
-            compressed_model,attribute = comprssed_and_attribute
-            decompress_model_param = self.compressor.decompress(compressed_model,attribute)
-            decompress_model_params[name] = decompress_model_param
-        return decompress_model_params
+#     def receive(self,model_params):
+#         self.receive_model_params = model_params
+#         self.decompress_model_params = self.decompress_all(model_params)
+#         return self.decompress_model_params
+    
+#     def decompress_all(self,model_params):
+#         decompress_model_params = {}
+#         for name,comprssed_and_attribute in model_params.items():
+#             compressed_model,attribute = comprssed_and_attribute
+#             decompress_model_param = self.compressor.decompress(compressed_model,attribute)
+#             decompress_model_params[name] = decompress_model_param
+#         return decompress_model_params
