@@ -1,10 +1,10 @@
 {
     "client": {
         "batch_size": 64,
-        "local epoch": 1,
+        "local epoch": 15,
         "optimizer": {
             "method": "SGD",
-            "lr": 0.001,
+            "lr": 0.01,
             "momentum": 0.9
         }
     },
@@ -13,7 +13,7 @@
         "dataset": "FMNIST",
         "loss function": "CrossEntropy",
         "n_clients": 5,
-        "mode": "async",
+        "mode": "sync",
         "updater":{
             "method": "period",
             "params":{
@@ -21,9 +21,9 @@
             }
         },
         "epoch": 100,
-        "epoch_time": 8,
+        "epoch_time": 8,    
         "schedule":{
-            "method" : "idle",
+            "method" : "random",
             "params":{
                 "proportion" : 0.8
             }
@@ -41,14 +41,14 @@
     },
     "compressor":{
         "uplink":{
-            "method":"topk",
+            "method":"none",
             "params":{
-                "cr": 0.1,
+                "cr": 1,
                 "error_feedback":true
             }
         },
         "downlink": {
-            "method": "None",
+            "method": "none",
             "params": {
                 "cr": 0.01,
                 "error_feedback": true

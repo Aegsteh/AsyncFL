@@ -14,7 +14,6 @@ from dataset.CustomerDataset import CustomerDataset
 from dataset.utils import get_default_data_transforms
 
 import server.ScheduleClass as sc
-from server.ScheduleClass import find_ScheduleClass
 
 import tools.jsonTool
 import tools.tensorTool as tl
@@ -88,11 +87,7 @@ class AsyncServer:
         schedule.every(self.global_config["epoch_time"]).seconds.do(self.update)
         while self.current_epoch < self.total_epoch:
             schedule.run_pending()
-
-        # Process join
-        # self.global_manager.join_clients()      # join all clients to train
-        # self.updater.join()                 # updater join
-        # self.scheduler.join()               # scheduler join
+            
         self.global_stop_event.set()
         
         # Exit

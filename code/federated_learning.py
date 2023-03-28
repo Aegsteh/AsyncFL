@@ -1,4 +1,5 @@
 from client.BaseClient import BaseClient
+from client.SyncClient import SyncClient
 
 import dataset.utils as du
 import torch
@@ -10,6 +11,7 @@ import tools.resultTools as rt
 import tools.delayTools as dt
 
 from server.AsyncServer import AsyncServer
+from server.SyncServer import SyncServer
 
 
 if __name__ == "__main__":
@@ -27,21 +29,32 @@ if __name__ == "__main__":
 
     compressor_config = config["compressor"]        # gradient compression config
 
-    for i in range(1,11):
-        cr = i / 10
-        compressor_config["uplink"]["params"]["cr"] = cr
-        # dataset
-        dataset = du.get_dataset(global_config["dataset"])               # load whole dataset
-        train_set = dataset.get_train_dataset()               # get global training set
-        split = split_data(data_distribution_config, n_clients, train_set)
-        test_set = dataset.get_test_dataset()
-        test_set = get_global_data(test_set)
+    # dataset
+    dataset = du.get_dataset(global_config["dataset"])               # load whole dataset
+    train_set = dataset.get_train_dataset()               # get global training set
+    split = split_data(data_distribution_config, n_clients, train_set)
+    test_set = dataset.get_test_dataset()
+    test_set = get_global_data(test_set)
 
+    # clients
+    clients = []
+    if global_config["mode"] == 'sync':
+        # synchronous clients
+        for i in range(n_clients):
+            clients += [SyncClient(cid=i,
+                                dataset=split[i],
+                                client_config=client_config,
+                                compression_config=compressor_config,
+                                device=device)]
+        # server
+        server = SyncServer(global_config=global_config,
+                            dataset=test_set,
+                            compressor_config=compressor_config,
+                            clients=clients,
+                            device=device)
+    elif global_config["mode"] == 'async':   
         # simulate delay
         delays = dt.generate_delays(global_config)
-        
-        # clients
-        clients = []
         for i in range(n_clients):
             clients += [BaseClient(cid=i,
                             dataset=split[i],
@@ -56,20 +69,10 @@ if __name__ == "__main__":
                             compressor_config=compressor_config,
                             clients=clients,
                             device=device)
-        
-        # set server for each client
-        for client in clients:
-            client.set_server(server)
-        
-        # start training
-        server.start()
-
-        
-        global_loss, global_acc = server.get_accuracy_and_loss_list()
-        staleness_list = server.get_staleness_list()
-        rt.save_results(config["result"]["path"],
-                        dir_name="{}_{}_{}".format(global_config["model"],global_config["dataset"],cr),
-                        config=config,
-                        global_loss=global_loss,
-                        global_acc=global_acc,
-                        staleness=staleness_list)
+    
+    # set server for each client
+    for client in clients:
+        client.set_server(server)
+    
+    # start training
+    server.start()

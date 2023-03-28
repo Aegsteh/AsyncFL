@@ -6,7 +6,7 @@ os.chdir(sys.path[0])
 def save_to_file(path,result):
     with open(path,'w') as f:
         for i in result:
-            f.write(i+'\n')
+            f.write(str(i)+'\n')
 
 def save_results(root=None,dir_name=None,config=None,global_loss=None,global_acc=None,staleness=None):
     dir_root = os.path.join('../results', root)          # experiment path
