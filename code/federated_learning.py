@@ -1,7 +1,7 @@
-import cloudpickle
 import pickle
 from client.BaseClient import BaseClient
 from client.SyncClient import SyncClient
+from client.AsyncClient import AsyncClient
 
 import dataset.utils as du
 import torch
@@ -14,10 +14,9 @@ import tools.delayTools as dt
 
 from server.AsyncServer import AsyncServer
 from server.SyncServer import SyncServer
+
 import os
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-
-pickle.Pickler = cloudpickle.Pickler
 
 if __name__ == "__main__":
     # load config
@@ -62,7 +61,7 @@ if __name__ == "__main__":
         # simulate delay
         delays = dt.generate_delays(global_config)
         for i in range(n_clients):
-            clients += [BaseClient(cid=i,
+            clients += [AsyncClient(cid=i,
                             dataset=split[i],
                             client_config=client_config,
                             compression_config=compressor_config,
