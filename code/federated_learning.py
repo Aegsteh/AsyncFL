@@ -1,3 +1,5 @@
+import cloudpickle
+import pickle
 from client.BaseClient import BaseClient
 from client.SyncClient import SyncClient
 
@@ -6,16 +8,20 @@ import torch
 import tools.utils
 from tools import jsonTool
 from tools.IID import split_data,get_global_data
-
+import multiprocessing
 import tools.resultTools as rt
 import tools.delayTools as dt
 
 from server.AsyncServer import AsyncServer
 from server.SyncServer import SyncServer
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
+pickle.Pickler = cloudpickle.Pickler
 
 if __name__ == "__main__":
     # load config
+    multiprocessing.set_start_method('spawn')
     config = jsonTool.generate_config('config.json')            # read config.json file and generate config dict
     client_config = config["client"]                            # get client's config
     data_distribution_config = config["data_distribution"]

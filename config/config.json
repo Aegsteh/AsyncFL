@@ -13,7 +13,7 @@
         "dataset": "FMNIST",
         "loss function": "CrossEntropy",
         "n_clients": 5,
-        "mode": "sync",
+        "mode": "async",
         "updater":{
             "method": "period",
             "params":{
