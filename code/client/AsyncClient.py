@@ -8,20 +8,27 @@ from compressor.topk import TopkCompressor
 import numpy as np
 from dataset.utils import get_default_data_transforms
 from dataset.CustomerDataset import CustomerDataset
-import random
+
 from multiprocessing import Process
 import multiprocessing
 import torch
 import os
 import sys
-import copy
-import traceback
 import time
 os.chdir(sys.path[0])
 
 
 config = jsonTool.generate_config('config.json')
 device = tools.utils.get_device(config["device"])
+# get client's config
+client_config = config["client"]
+global_config = config["global"]
+# add model config to client
+client_config["model"] = global_config["model"]
+client_config["dataset"] = global_config["dataset"]
+client_config["loss function"] = global_config["loss function"]
+
+compressor_config = config["compressor"]        # gradient compression config
 
 
 class AsyncClient:
@@ -32,10 +39,15 @@ class AsyncClient:
         self.model_name = client_config["model"]
         self.model = self.init_model()       # mechine learning model
 
+        # config
+        self.client_config = client_config
+        self.compression_config = compression_config
+
         # model weight reference
         self.W = {name: value for name, value in self.model.named_parameters()}
         self.dW_compressed = {name: torch.zeros(value.shape).to(
             device) for name, value in self.W.items()}     # compressed gradient
+        self.dW_compressed_cpu = {name: torch.zeros(value.shape) for name, value in self.W.items()}
         self.dW = {name: torch.zeros(value.shape).to(
             device) for name, value in self.W.items()}                # gradient
         # global model before local training
@@ -85,11 +97,14 @@ class AsyncClient:
 
         # multiple process valuable
         self.selected_event = False     # indicate if the client is selected
+        self.stop_event = False
     
     def __getstate__(self):
         """return a dict for current status"""
         state = self.__dict__.copy()
-        res_keys = ['epoch_num']
+        res_keys = ['cid','epoch_num','W','dW','dW_compressed','W_old','A','epoch_num','dataset',
+                    'lr', 'momentum', 'batch_size', 'delay', 'model_stamp', 'selected_event', 'stop_event',
+                    'client_config', 'compression_config']
         res_state = {}
         for key,value in state.items():
             if key in res_keys:
@@ -122,9 +137,9 @@ class AsyncClient:
         train_acc = 0.0
         train_loss = 0.0
         train_num = 0
-        print(self.epoch_num)
+        # print(self.epoch_num)
         for epoch in range(self.epoch_num):
-            print(epoch)
+            # print(epoch)
             try:  # Load new batch of data
                 features, labels = next(self.epoch_loader)
             except:  # Next epoch
@@ -156,9 +171,11 @@ class AsyncClient:
         print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {}\n".format(
             self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time, self.compression_config["uplink"]["params"]["cr"]))
 
-    def synchronize_with_server(self, server):
-        self.model_timestamp = server.current_epoch
-        tl.copy_weight(target=self.W, source=server.W)
+    def synchronize_with_server(self,GLOBAL_INFO):
+        self.model_timestamp = GLOBAL_INFO[0]['timestamp']
+        W_G = GLOBAL_INFO[0]['weight']
+        tl.to_gpu(W_G,W_G)
+        tl.copy_weight(target=self.W, source=W_G)
 
     def init_model(self):
         if self.model_name == 'CNN1':
@@ -219,8 +236,9 @@ class AsyncClient:
         tl.copy_weight(self.W_buffer, decompress_model_weight)
         # print("Client {}'s model has been decompressed in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
 
-    def send(self, server, transmit_dict):
-        server.receive(transmit_dict)
+    def send(self, transmit_dict):
+        global_queue = gol.get_value('GLOBAL_QUEUE')
+        global_queue.push(transmit_dict)
 
     def get_model_params(self):
         return self.model.state_dict()
@@ -235,11 +253,36 @@ class AsyncClient:
         self.server = server
 
 
-def run_client(client):
-    while not client.stop_event:     # if the training process is going on
-        if client.selected_event:     # if the client is selected by scheduler
+def init_model(model_name):
+    if model_name == 'CNN1':
+        return CNN1()
+    elif model_name == 'CNN3':
+        return CNN3()
+    elif model_name == 'VGG11s':
+        return VGG11s()
+    elif model_name == 'VGG11':
+        return VGG11()
+
+def get_client_from_temp(client_temp):
+    client = AsyncClient(cid=client_temp.cid,
+                         dataset=client_temp.dataset,
+                         client_config=client_temp.client_config,
+                         compression_config=client_temp.compression_config,
+                         delay=client_temp.delay,
+                         device=device)
+    return client
+
+
+def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
+    # get a full attributed client
+    client = get_client_from_temp(client_temp)
+    cid = client.cid            # get cid for convenience
+    # if the training process is going on
+    while not STOP_EVENT.value:
+        # if the client is selected by scheduler
+        if SELECTED_EVENT[cid]:
             # synchronize
-            client.synchronize_with_server(client.server)
+            client.synchronize_with_server(GLOBAL_INFO)
 
             # Training mode
             client.model.train()
@@ -260,20 +303,16 @@ def run_client(client):
                 compression_config=client.compression_config["uplink"])
 
             # set transmit dict
-            transmit_dict = {}
-            transmit_dict["cid"] = client.cid
-            # client gradient
-            transmit_dict["client_gradient"] = client.dW_compressed
-            # number of data samples
-            transmit_dict["data_num"] = len(client.x_train)
-            transmit_dict["timestamp"] = client.model_timestamp
+            tl.to_cpu(client.dW_compressed_cpu,client.dW_compressed)
+            transmit_dict = {"cid": cid, "client_gradient": client.dW_compressed_cpu,
+                             "data_num": len(client.x_train), "timestamp": client.model_timestamp}
 
             # transmit to server (simulate network delay)
             # simulate network delay
             time.sleep(client.delay *
                        client.compression_config["uplink"]["params"]["cr"])
             # send (cid,gradient,weight,timestamp) to server
-            client.server.receive(transmit_dict)
+            GLOBAL_QUEUE.put(transmit_dict)
             # set selected false, sympolize the client isn't on training
-            client.set_selected_event(False)
+            SELECTED_EVENT[cid] = False
     print("Client {} Exit.\n".format(client.cid))
