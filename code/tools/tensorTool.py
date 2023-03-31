@@ -33,3 +33,11 @@ def compress(target, source, compress_fun):
 def subtract(target, source):
   for name in target:
     target[name].data -= source[name].data.clone()
+
+def to_cpu(target, source):
+  for name in target:
+    target[name] = source[name].detach().cpu().clone()
+
+def to_gpu(target, source):
+  for name in target:
+    target[name] = source[name].cuda().clone()

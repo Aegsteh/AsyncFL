@@ -236,10 +236,6 @@ class AsyncClient:
         tl.copy_weight(self.W_buffer, decompress_model_weight)
         # print("Client {}'s model has been decompressed in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
 
-    def send(self, transmit_dict):
-        global_queue = gol.get_value('GLOBAL_QUEUE')
-        global_queue.push(transmit_dict)
-
     def get_model_params(self):
         return self.model.state_dict()
 
