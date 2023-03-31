@@ -10,15 +10,15 @@ def schedule(clients,schedule_config):
         participating_clients = random_schedule(clients,schedule_config)
     return participating_clients
 
-def idle_schedule(clients,schedule_config):
+def idle_schedule(clients,schedule_config,SELECTED_EVENT):
     '''
     select clients which is being idle time
     '''
-    participating_clients = []
-    for client in clients:
-        if not client.selected_event.is_set():
-            participating_clients.append(client)
-    return participating_clients
+    participating_client_idxs = []
+    for cid,client in clients.items():
+        if not SELECTED_EVENT[cid]:
+            participating_client_idxs.append(cid)
+    return participating_client_idxs
 
 def random_schedule(clients,schedule_config):
     '''
