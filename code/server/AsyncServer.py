@@ -143,7 +143,7 @@ class AsyncServer:
             
             # change global model
             tl.to_cpu(self.W_cpu,self.W)
-            global_info = {'weight':self.W_cpu,'timestamp':self.current_epoch}
+            global_info = {'weight':self.W_cpu, 'timestamp':self.current_epoch}
             GLOBAL_INFO[0] = global_info
 
             self.eval_model()
@@ -160,7 +160,7 @@ class AsyncServer:
         self.save_result()
 
     def save_result(self):
-        global_loss, global_acc = self.get_accuracy_and_loss_list()
+        global_acc, global_loss = self.get_accuracy_and_loss_list()
         staleness_list = self.get_staleness_list()
         rt.save_results(config["result"]["path"],
                         dir_name="{}_{}_{}".format(

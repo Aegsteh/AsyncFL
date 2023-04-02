@@ -21,7 +21,7 @@
             }
         },
         "epoch": 100,
-        "epoch_time": 8,    
+        "epoch_time": 6,
         "schedule":{
             "method" : "random",
             "params":{
@@ -41,7 +41,7 @@
     },
     "compressor":{
         "uplink":{
-            "method":"none",
+            "method":"topk",
             "params":{
                 "cr": 1,
                 "error_feedback":true
@@ -56,6 +56,6 @@
         }
     },
     "result":{
-        "path": "CRandStaleness"
+        "path": "CR_ACC"
     }
 }

@@ -66,28 +66,33 @@ if __name__ == "__main__":
                             clients=clients,
                             device=device)
     elif global_config["mode"] == 'async':
-        MANAGER = Manager()         # multiprocessing manager
-        # initialize STOP_EVENT, representing for if global training stops
-        STOP_EVENT = MANAGER.Value(ctypes.c_bool, False)
-        SELECTED_EVENT = MANAGER.list(
-            [False for i in range(global_config["n_clients"])])
-        GLOBAL_QUEUE = MANAGER.Queue()
-        GLOBAL_INFO = MANAGER.list([0])
-        # simulate delay
-        delays = dt.generate_delays(global_config)
-        for i in range(n_clients):
-            clients += [AsyncClient(cid=i,
-                                    dataset=split[i],
-                                    client_config=client_config,
-                                    compression_config=compressor_config,
-                                    delay=delays[i],
-                                    device=device)]
+        for j in range(2, 11):
+            cr = j / 10
+            compressor_config["uplink"]["params"]["cr"] = cr
+            # print config
+            jsonTool.print_config(config)
+            MANAGER = Manager()         # multiprocessing manager
+            # initialize STOP_EVENT, representing for if global training stops
+            STOP_EVENT = MANAGER.Value(ctypes.c_bool, False)
+            SELECTED_EVENT = MANAGER.list(
+                [False for i in range(global_config["n_clients"])])
+            GLOBAL_QUEUE = MANAGER.Queue()
+            GLOBAL_INFO = MANAGER.list([0])
+            # simulate delay
+            delays = dt.generate_delays(global_config)
+            for i in range(n_clients):
+                clients += [AsyncClient(cid=i,
+                                        dataset=split[i],
+                                        client_config=client_config,
+                                        compression_config=compressor_config,
+                                        delay=delays[i],
+                                        device=device)]
 
-        # server
-        server = AsyncServer(global_config=global_config,
-                             dataset=test_set,
-                             compressor_config=compressor_config,
-                             clients=clients,
-                             device=device)
-        # start training
-        server.start(STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INFO)
+            # server
+            server = AsyncServer(global_config=global_config,
+                                 dataset=test_set,
+                                 compressor_config=compressor_config,
+                                 clients=clients,
+                                 device=device)
+            # start training
+            server.start(STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INFO)

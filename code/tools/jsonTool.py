@@ -10,3 +10,7 @@ def generate_config(json_file):
         config = json.load(f)
 
     return config
+
+def print_config(config_dict):
+    for key, value in config_dict.items():
+        print("- {} : {}".format(key,value))

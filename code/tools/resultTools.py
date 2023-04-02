@@ -26,7 +26,7 @@ def save_results(root=None,dir_name=None,config=None,global_loss=None,global_acc
         save_to_file(global_loss_path,global_loss)
     
     if not global_acc is None:
-        global_acc_name = "global_loss.txt"
+        global_acc_name = "global_acc.txt"
         global_acc_path = os.path.join(dir_path,global_acc_name)
         save_to_file(global_acc_path,global_acc)
     

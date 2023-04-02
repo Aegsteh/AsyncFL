@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="On explicit save action" serverName="gnode1-AFL" exclude=".svn;.cvs;.idea;.DS_Store;.git;.hg;*.hprof;*.pyc;/data;" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+    <serverData>
+      <paths name="gnode1-AFL">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/jjsong/dev/AsyncFL-multipro" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/data" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+      <paths name="gnode1-AFL (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/jjsong/dev/AsyncFL-multipro" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ON_EXPLICIT_SAVE" />
+  </component>
+</project>

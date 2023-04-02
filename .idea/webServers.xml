@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="79cc5226-c6c9-43bb-98ad-caba4487bf4d" name="gnode1-AFL">
+        <fileTransfer accessType="SFTP" host="10.103.10.151" port="8001" sshConfigId="654a38b7-2480-43ae-8de4-2e66a9a9b4ec" sshConfig="gnode1-AFL">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

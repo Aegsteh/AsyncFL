@@ -305,8 +305,8 @@ def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
 
             # transmit to server (simulate network delay)
             # simulate network delay
-            time.sleep(client.delay *
-                       client.compression_config["uplink"]["params"]["cr"])
+            # time.sleep(client.delay *
+            #            client.compression_config["uplink"]["params"]["cr"])
             # send (cid,gradient,weight,timestamp) to server
             GLOBAL_QUEUE.put(transmit_dict)
             # set selected false, sympolize the client isn't on training
