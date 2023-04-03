@@ -1,4 +1,4 @@
-from model.CNN import CNN1, CNN3, VGG11s, VGG11
+from model.CNN import CNN1, CNN3, VGG11s, VGG11, VGG11s_3
 from tools import jsonTool
 import tools.utils
 import tools.tensorTool as tl
@@ -32,7 +32,7 @@ compressor_config = config["compressor"]        # gradient compression config
 
 
 class AsyncClient:
-    def __init__(self, cid, dataset, client_config, compression_config, delay, device):
+    def  __init__(self, cid, dataset, client_config, compression_config, delay, device):
         self.cid = cid          # the id of client
 
         # model
@@ -186,6 +186,8 @@ class AsyncClient:
             return VGG11s()
         elif self.model_name == 'VGG11':
             return VGG11()
+        elif self.model_name == 'VGG11s_3':
+            return VGG11s_3()
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':
@@ -219,22 +221,6 @@ class AsyncClient:
         self.y_train = label[:train_num]            # the label of training set
         self.x_test = data[train_num:]               # the data of testing set
         self.y_test = label[train_num:]             # the label of testing set
-
-    def receive(self, transmit_dict):
-        # set selected event True: the client has been selected
-        self.set_selected_event(True)
-
-        # timestamp of global model
-        self.model_timestamp = transmit_dict["timestamp"]
-
-        # print("Client {} has been selected in global epoch {}\n".format(self.cid,self.model_timestamp))
-
-        model_weight = transmit_dict["weight"]
-        # receive compress model from server and decompress
-        decompress_model_weight = self.receiver.receive(model_weight)
-        # save decompress model into buffer
-        tl.copy_weight(self.W_buffer, decompress_model_weight)
-        # print("Client {}'s model has been decompressed in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
 
     def get_model_params(self):
         return self.model.state_dict()

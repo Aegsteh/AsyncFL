@@ -70,7 +70,10 @@ def niid_dirichlet_split(n_clients,alpha, train_set):
     # total classes num
     x_train = train_set.data            # get data of training samples
     y_train = train_set.targets         # get label of training samples
-    n_classes = y_train.max()+1
+    try:
+        n_classes = y_train.max()+1
+    except:
+        n_classes = np.max(y_train) + 1
 
     # shuffle
     x_train,y_train = together_shuffle(x_train,y_train)

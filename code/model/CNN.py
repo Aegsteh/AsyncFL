@@ -65,11 +65,19 @@ def VGG11s():
     in_channels = 1
     return VGG(make_layers([32, 'M', 64, 'M', 128, 128, 'M', 128, 128, 'M', 128, 128, 'M'], in_channels), size=128)
 
-def VGG11():
+def VGG11s_3():
     # if dataset_name == 'CIFAR10':
     #     in_channels = 3
     # else:
     #     in_channels = 1
+    in_channels = 3
+    return VGG(make_layers([32, 'M', 64, 'M', 128, 128, 'M', 128, 128, 'M', 128, 128, 'M'], in_channels), size=128)
+
+def VGG11():
+    # if dataset_name == 'CIFAR10':
+    #     in_channels = 3
+    # else:
+    in_channels = 1
     return VGG(make_layers([64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'], in_channels))
 
 def make_layers(cfg, in_channels):

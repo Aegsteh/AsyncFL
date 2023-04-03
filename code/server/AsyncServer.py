@@ -1,5 +1,5 @@
 import torch
-from model.CNN import CNN1, CNN3, VGG11s, VGG11
+from model.CNN import CNN1, CNN3, VGG11s, VGG11, VGG11s_3
 
 import threading
 import queue
@@ -23,6 +23,8 @@ import tools.resultTools as rt
 
 from client.AsyncClient import run_client
 from ctypes import c_bool
+
+import numpy as np
 
 # load config
 config = tools.jsonTool.generate_config('config.json')
@@ -179,6 +181,8 @@ class AsyncServer:
             return VGG11s()
         elif self.model_name == 'VGG11':
             return VGG11()
+        elif self.model_name == 'VGG11s_3':
+            return VGG11s_3()
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':
@@ -245,10 +249,15 @@ class AsyncGlobalManager:       # Manage clients and global information
         self.dataset_name = global_config["dataset"]
         # the test dataset of server, a list with 2 elements, the first is all data, the second is all label
         self.dataset = dataset
-        self.x_test = dataset[0].numpy()
-        self.y_test = dataset[1].numpy()
-        self.transforms_train, self.transforms_eval = get_default_data_transforms(
-            self.dataset_name)
+
+        self.x_test = dataset[0]
+        self.y_test = dataset[1]
+        if type(self.x_test) == torch.Tensor:
+            self.x_test,self.y_test = self.x_test.numpy(),self.y_test.numpy()
+        elif type(self.y_test) == list:
+            self.y_test = np.array(self.y_test)
+        # print(self.y_test.shape)
+        self.transforms_train, self.transforms_eval = get_default_data_transforms(self.dataset_name)
         self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_test, self.y_test, self.transforms_eval),
                                                        batch_size=8,
                                                        shuffle=False)

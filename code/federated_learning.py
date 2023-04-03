@@ -50,25 +50,26 @@ if __name__ == "__main__":
     test_set = get_global_data(test_set)
 
     # clients
-    clients = []
-    if global_config["mode"] == 'sync':
-        # synchronous clients
-        for i in range(n_clients):
-            clients += [SyncClient(cid=i,
-                                   dataset=split[i],
-                                   client_config=client_config,
-                                   compression_config=compressor_config,
-                                   device=device)]
-        # server
-        server = SyncServer(global_config=global_config,
-                            dataset=test_set,
-                            compressor_config=compressor_config,
-                            clients=clients,
-                            device=device)
-    elif global_config["mode"] == 'async':
-        for j in range(2, 11):
-            cr = j / 10
-            compressor_config["uplink"]["params"]["cr"] = cr
+    for cr in [0.001,0.01,0.1,1]:
+        compressor_config["uplink"]["params"]["cr"] = cr
+        clients = []
+        if global_config["mode"] == 'sync':
+            clients = []
+            # synchronous clients
+            for i in range(n_clients):
+                clients += [SyncClient(cid=i,
+                                       dataset=split[i],
+                                       client_config=client_config,
+                                       compression_config=compressor_config,
+                                       device=device)]
+            # server
+            server = SyncServer(global_config=global_config,
+                                dataset=test_set,
+                                compressor_config=compressor_config,
+                                clients=clients,
+                                device=device)
+        elif global_config["mode"] == 'async':
+            clients = []
             # print config
             jsonTool.print_config(config)
             MANAGER = Manager()         # multiprocessing manager

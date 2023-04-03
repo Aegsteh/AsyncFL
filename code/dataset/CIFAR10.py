@@ -1,4 +1,5 @@
 from torchvision import datasets, transforms
+import numpy as np
 
 
 class CIFAR10:
@@ -8,6 +9,8 @@ class CIFAR10:
                                         transform=transforms.ToTensor(), download=True)
         test_datasets = datasets.CIFAR10(root='../data/', train=False,
                                        transform=transforms.ToTensor(), download=True)
+        train_datasets.data = train_datasets.data.transpose((0, 3, 1, 2))
+        test_datasets.data = test_datasets.data.transpose((0, 3, 1, 2))
         self.train_datasets = train_datasets
         self.test_datasets = test_datasets
 

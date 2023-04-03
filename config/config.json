@@ -9,8 +9,8 @@
         }
     },
     "global":{
-        "model": "VGG11s",
-        "dataset": "FMNIST",
+        "model": "VGG11s_3",
+        "dataset": "CIFAR10",
         "loss function": "CrossEntropy",
         "n_clients": 5,
         "mode": "async",
@@ -21,7 +21,7 @@
             }
         },
         "epoch": 100,
-        "epoch_time": 6,
+        "epoch_time": 4,
         "schedule":{
             "method" : "random",
             "params":{
@@ -35,7 +35,7 @@
     },
     "device": "gpu",
     "data_distribution": {
-        "iid" : true,
+        "iid" : false,
         "customize": false,
         "cus_distribution": [2,2,2,2,2,2,2,2,2,2]
     },
@@ -43,19 +43,19 @@
         "uplink":{
             "method":"topk",
             "params":{
-                "cr": 1,
+                "cr": 0.01,
                 "error_feedback":true
             }
         },
         "downlink": {
             "method": "none",
             "params": {
-                "cr": 0.01,
+                "cr": 1,
                 "error_feedback": true
             }
         }
     },
     "result":{
-        "path": "CR_ACC"
+        "path": "CR_ACC_NIID"
     }
 }
