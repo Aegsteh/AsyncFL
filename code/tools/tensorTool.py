@@ -23,6 +23,13 @@ def weighted_average(target, sources, weights):
     modify = [weight/summ*n for weight in weights]
     target[name].data = torch.mean(torch.stack([m*source[name].data for source, m in zip(sources, modify)]), dim=0).clone()
 
+def afo_average(target, client_source, alpha):
+  for name in target:
+    target[name].data = (1 - alpha) * target[name].data.clone() + alpha * client_source[name].data.clone()
+
+def afo_gradient_avg(target, gradient, alpha):
+  for name in target:
+    target[name].data = target[name].data.clone() + alpha * gradient[name].data.clone()
 def compress(target, source, compress_fun):
   '''
   compress_fun : a function f : tensor (shape) -> tensor (shape)

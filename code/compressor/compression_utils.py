@@ -131,6 +131,36 @@ def signsgd(T, hp):
   """
   return T.sign()
 
+def qsgd(T, hp):
+  hp_ = {"cr": 8, 'approx': 1.0}
+  hp_.update(hp)
+
+  shape = T.size()
+  tensor = T.flatten()
+
+  norm = tensor.norm()
+  norm = norm.flatten()
+  abs_gradient = tensor.abs()
+
+  level_float = hp_["cr"] / norm * abs_gradient
+  previous_level = level_float.floor()
+  prob = torch.empty_like(tensor).uniform_()
+  is_next_level = (prob < (level_float - previous_level)).type(torch.float32)
+  new_level = (previous_level + is_next_level)
+
+  sign = tensor.sign()
+  tensor_compressed = (new_level * sign).type(torch.int16)
+  tensor_compressed = tensor_compressed.type(torch.int8 if hp_["cr"] < 128 else torch.half)
+  tensor_compressed = tensor_compressed, norm
+
+  tensor_compressed, norm = tensor_compressed
+
+  decode_output = tensor_compressed.type(torch.float32)
+  tensor_decompressed = norm / hp_["cr"] * decode_output
+  tensor_decompressed = tensor_decompressed.view(shape)
+
+  return tensor_decompressed
+
 
 def compression_function(compression_config):
   '''

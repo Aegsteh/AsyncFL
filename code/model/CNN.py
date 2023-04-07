@@ -5,6 +5,7 @@ Simple CNN for MNIST dataset, the figure in MNIST has 1 channel
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import copy
 
 class CNN1(nn.Module):
     def __init__(self):
@@ -29,6 +30,19 @@ class CNN1(nn.Module):
         x = self.fc2(x)
         return x
 
+    def __deepcopy__(self):
+        # 创建一个新的 VGG 实例
+        new_model = CNN1(copy.deepcopy(self.conv1), self.classifier[0].in_features, self.classifier[-1].out_features)
+        # 复制每个层的参数
+        for i, layer in enumerate(self.classifier):
+            if isinstance(layer, nn.Linear):
+                new_model.classifier[i].weight = copy.deepcopy(layer.weight)
+                new_model.classifier[i].bias = copy.deepcopy(layer.bias)
+        return new_model
+
+    def copy(self):
+        return copy.deepcopy(self)
+
         
 '''
 Simple CNN for FMNIST dataset, the figure in FMNIST has 3 channel
@@ -38,7 +52,7 @@ Simple CNN for FMNIST dataset, the figure in FMNIST has 3 channel
 class CNN3(nn.Module):
     def __init__(self):
         super(CNN3, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=5)
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=5)
         self.pool = nn.MaxPool2d(2, 2)
         self.conv2 = nn.Conv2d(32, 32, kernel_size=5)
         self.fc1 = nn.Linear(800, 256)
@@ -121,3 +135,16 @@ class VGG(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
         return x
+
+    def __deepcopy__(self, memo):
+        # 创建一个新的 VGG 实例
+        new_model = VGG(copy.deepcopy(self.features), self.classifier[0].in_features, self.classifier[-1].out_features)
+        # 复制每个层的参数
+        for i, layer in enumerate(self.classifier):
+            if isinstance(layer, nn.Linear):
+                new_model.classifier[i].weight = copy.deepcopy(layer.weight)
+                new_model.classifier[i].bias = copy.deepcopy(layer.bias)
+        return new_model
+
+    def copy(self):
+        return copy.deepcopy(self)

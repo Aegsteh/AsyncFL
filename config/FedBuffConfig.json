@@ -9,21 +9,21 @@
         }
     },
     "global":{
-        "model": "CNN1",
-        "dataset": "FMNIST",
+        "model": "VGG11s_3",
+        "dataset": "CIFAR10",
         "loss function": "CrossEntropy",
         "n_clients": 5,
         "mode": "FedBuff",
         "updater":{
-            "method": "period",
+            "method": "K_number",
             "params":{
-                "alpha": 1
+                "K": 5
             }
         },
         "epoch": 500,
-        "epoch_time": 4,
+        "schedule_period": 2,
         "schedule":{
-            "method" : "random",
+            "method" : "idle",
             "params":{
                 "proportion" : 0.8
             }
@@ -43,7 +43,7 @@
         "uplink":{
             "method":"topk",
             "params":{
-                "cr": 1,
+                "cr": 0.1,
                 "error_feedback":false
             }
         },
@@ -56,6 +56,6 @@
         }
     },
     "result":{
-        "path": "CR_ACC_NIID_NE"
+        "path": "FedBuff/CR_ACC_NIID_NE"
     }
 }
