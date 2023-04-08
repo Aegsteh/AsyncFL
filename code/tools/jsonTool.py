@@ -19,5 +19,7 @@ def get_config_file(mode):
     json_file_name = ''
     if mode == 'FedBuff':
         json_file_name = 'FedBuffConfig.json'
+    elif mode =='async':
+        json_file_name = 'config.json'
     json_path = os.path.join('../config', json_file_name)
     return json_path

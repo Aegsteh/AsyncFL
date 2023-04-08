@@ -25,7 +25,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 if __name__ == "__main__":
-    mode = 'FedBuff'
+    mode = 'async'
     # load config
     multiprocessing.set_start_method('spawn', force=True)
     # read config json file and generate config dict
