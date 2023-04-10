@@ -1,4 +1,4 @@
-from model.CNN import CNN1, CNN3, VGG11s, VGG11, VGG11s_3
+from model import get_model
 from tools import jsonTool
 import tools.utils
 import tools.tensorTool as tl
@@ -37,7 +37,7 @@ class AsyncClient:
 
         # model
         self.model_name = client_config["model"]
-        self.model = self.init_model()       # mechine learning model
+        self.model = get_model(self.model_name).to(device)       # mechine learning model
 
         # config
         self.client_config = client_config

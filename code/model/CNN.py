@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import copy
+from model.resnet_gn import resnet18
 
 class CNN1(nn.Module):
     def __init__(self):
@@ -148,3 +149,12 @@ class VGG(nn.Module):
 
     def copy(self):
         return copy.deepcopy(self)
+
+class ResNet18(nn.Module):
+
+    def __init__(self, group_norm=2):
+        super(ResNet18, self).__init__()
+        self.resnet = resnet18(pretrained=False, num_classes=100, num_channels_per_group=group_norm)
+    def forward(self, x):
+        x = self.resnet(x)
+        return x

@@ -9,6 +9,8 @@ import numpy as np
 from dataset.utils import get_default_data_transforms
 from dataset.CustomerDataset import CustomerDataset
 
+from model import get_model
+
 from multiprocessing import Process
 import multiprocessing
 import torch
@@ -37,7 +39,7 @@ class FedBuffClient:
 
         # model
         self.model_name = client_config["model"]
-        self.model = self.init_model()  # mechine learning model
+        self.model = get_model(self.model_name).to(device)  # mechine learning model
 
         # config
         self.client_config = client_config

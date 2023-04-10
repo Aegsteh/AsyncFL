@@ -25,7 +25,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 
 if __name__ == "__main__":
-    mode = 'async'
+    mode = 'FedBuff'
     # load config
     multiprocessing.set_start_method('spawn', force=True)
     # read config json file and generate config dict
@@ -56,8 +56,8 @@ if __name__ == "__main__":
     test_set = get_global_data(test_set)
 
     # clients
-    for cr in [0.5, 0.1, 0.01, 0.001]:
-        compressor_config["uplink"]["params"]["cr"] = cr
+    for li in [15, 30, 45, 60]:
+        global_config["local epoch"] = li
         clients = []
         if global_config["mode"] == 'sync':
             clients = []

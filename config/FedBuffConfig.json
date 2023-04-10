@@ -9,7 +9,7 @@
         }
     },
     "global":{
-        "model": "VGG11s_3",
+        "model": "ResNet18",
         "dataset": "CIFAR10",
         "loss function": "CrossEntropy",
         "n_clients": 5,
@@ -43,7 +43,7 @@
         "uplink":{
             "method":"topk",
             "params":{
-                "cr": 0.1,
+                "cr": 1,
                 "error_feedback":false
             }
         },
@@ -56,6 +56,6 @@
         }
     },
     "result":{
-        "path": "FedBuff/CR_ACC_NIID_NE"
+        "path": "FedBuff/LI_ACC_NIID_NE"
     }
 }

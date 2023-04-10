@@ -7,7 +7,7 @@ os.chdir(sys.path[0])
 import threading
 
 from multiprocessing import Process
-from model.CNN import CNN1,CNN3,VGG11s,VGG11
+from model import get_model
 import random
 from dataset.CustomerDataset import CustomerDataset
 from dataset.utils import get_default_data_transforms
@@ -25,7 +25,7 @@ class SyncClient():
 
         # model
         self.model_name = client_config["model"]              
-        self.model = self.init_model().to(device)       # mechine learning model
+        self.model = get_model(self.model_name).to(device)       # mechine learning model
 
         self.W = {name : value for name, value in self.model.named_parameters()}            # model weight reference
         self.dW_compressed = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}     # compressed gradient

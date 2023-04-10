@@ -1,5 +1,5 @@
 import torch
-from model.CNN import CNN1, CNN3, VGG11s, VGG11, VGG11s_3
+from model import get_model
 
 import threading
 import queue
@@ -44,7 +44,7 @@ class FedBuffServer:
 
         # model
         self.model_name = global_config["model"]
-        self.model = self.init_model().to(device)  # mechine learning model
+        self.model = get_model(self.model_name).to(device)  # mechine learning model
         self.W = {name: value for name, value in self.model.named_parameters()}
         self.W_cpu = {name: torch.zeros(value.shape).to('cpu') for name, value in self.W.items()}  # used to transmit
         self.dW_compress = {name: torch.zeros(value.shape).to(
@@ -164,7 +164,7 @@ class FedBuffServer:
         rt.save_results(config["result"]["path"],
                         dir_name="{}_{}_{}".format(
                             global_config["model"], global_config["dataset"],
-                            self.compressor_config["uplink"]["params"]["cr"]),
+                            self.global_config["local epoch"]),
                         config=config,
                         global_loss=global_loss,
                         global_acc=global_acc,

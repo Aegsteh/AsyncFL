@@ -1,5 +1,5 @@
 import torch
-from model.CNN import CNN1,CNN3,VGG11s,VGG11
+from model import get_model
 
 import threading
 import queue
@@ -32,7 +32,7 @@ class SyncServer:
 
         # model
         self.model_name = global_config["model"]              
-        self.model = self.init_model().to(device)       # mechine learning model
+        self.model = get_model(self.model_name).to(device)       # mechine learning model
         self.W = {name : value for name, value in self.model.named_parameters()}
         self.dW_compress = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
         self.dW = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}
