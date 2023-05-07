@@ -9,7 +9,7 @@ from dataset.utils import get_default_data_transforms
 
 import server.ScheduleClass as sc
 
-import tools.jsonTool
+import tools.jsonTool as jsonTool
 import tools.tensorTool as tl
 import tools.resultTools as rt
 
@@ -22,7 +22,9 @@ import time
 
 
 # load config
-config = tools.jsonTool.generate_config('config.json')
+mode='afo'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 global_config = config["global"]
 
 

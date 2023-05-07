@@ -18,6 +18,11 @@ from compressor import NoneCompressor
 import compressor.compression_utils as comp
 
 import tools.tensorTool as tl
+import tools.jsonTool as jsonTool
+
+mode='sync'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 
 class SyncClient():
     def __init__(self,cid,dataset,client_config,compression_config,device):
@@ -81,6 +86,8 @@ class SyncClient():
         # dW = W - W_old
         tl.subtract_(self.dW,self.W,self.W_old)     # gradient computation
 
+        
+
         # compress gradient
         self.compress_weight(compression_config=self.compression_config["uplink"])
 
@@ -136,16 +143,6 @@ class SyncClient():
     
     def synchronize_with_server(self,server):
         tl.copy_weight(target=self.W, source=server.W)
-    
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
     
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

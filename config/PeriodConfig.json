@@ -13,7 +13,7 @@
         "dataset": "FMNIST",
         "loss function": "CrossEntropy",
         "n_clients": 5,
-        "mode": "async",
+        "mode": "period",
         "updater":{
             "method": "period",
             "params":{
@@ -41,10 +41,10 @@
     },
     "compressor":{
         "uplink":{
-            "method":"qsgd",
+            "method":"topk",
             "params":{
                 "cr": 1,
-                "error_feedback":false
+                "error_feedback": true
             }
         },
         "downlink": {
@@ -56,6 +56,6 @@
         }
     },
     "result":{
-        "path": "Period/QSGD_NIID_425"
+        "path": "Period/Heatmap_TOPK3"
     }
 }

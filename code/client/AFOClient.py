@@ -14,7 +14,9 @@ from model import get_model
 os.chdir(sys.path[0])
 
 
-config = jsonTool.generate_config('config.json')
+mode='afo'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 device = tools.utils.get_device(config["device"])
 # get client's config
 client_config = config["client"]
@@ -178,18 +180,6 @@ class AFOClient:
         tl.to_gpu(W_G,W_G)
         tl.copy_weight(target=self.W, source=W_G)
 
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
-        elif self.model_name == 'VGG11s_3':
-            return VGG11s_3()
-
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':
             return torch.nn.CrossEntropyLoss()
@@ -234,17 +224,6 @@ class AFOClient:
 
     def set_server(self, server):
         self.server = server
-
-
-def init_model(model_name):
-    if model_name == 'CNN1':
-        return CNN1()
-    elif model_name == 'CNN3':
-        return CNN3()
-    elif model_name == 'VGG11s':
-        return VGG11s()
-    elif model_name == 'VGG11':
-        return VGG11()
 
 def get_client_from_temp(client_temp):
     client = AFOClient(cid=client_temp.cid,

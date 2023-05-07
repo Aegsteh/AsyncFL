@@ -17,7 +17,7 @@ from dataset.utils import get_default_data_transforms
 
 import server.ScheduleClass as sc
 
-import tools.jsonTool
+import tools.jsonTool as jsonTool
 import tools.tensorTool as tl
 import tools.resultTools as rt
 
@@ -27,7 +27,9 @@ from ctypes import c_bool
 import numpy as np
 
 # load config
-config = tools.jsonTool.generate_config('config.json')
+mode='period'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 global_config = config["global"]
 
 
@@ -78,6 +80,7 @@ class AsyncServer:
         self.staleness_list = []
         self.loss_list = []
         self.accuracy_list = []
+        self.gradient_num_list = []
 
         # global manager
         self.global_manager = AsyncGlobalManager(clients=clients,
@@ -119,6 +122,7 @@ class AsyncServer:
             client_gradients = []           # save multi local_W
             data_nums = []
             stalenesses = []
+            gradient_num = 0
             while not GLOBAL_QUEUE.empty():
                 # get information from client,(cid, client_gradient, data_num, timestamp)
                 transmit_dict = GLOBAL_QUEUE.get()
@@ -126,17 +130,22 @@ class AsyncServer:
                 cid = transmit_dict["cid"]
                 # client gradient
                 client_gradient = transmit_dict["client_gradient"]
-                tl.to_gpu(client_gradient,client_gradient)
+                tl.to_gpu(client_gradient, client_gradient)
                 # number of data samples
                 data_num = transmit_dict["data_num"]
                 # timestamp of client gradient
                 timestamp = transmit_dict["timestamp"]
                 staleness = self.current_epoch - timestamp                  # staleness
+                gradient_num += 1
 
                 client_gradients.append(client_gradient)
                 data_nums.append(data_num)
                 stalenesses.append(staleness)
                 self.staleness_list.append(staleness)
+            if len(self.gradient_num_list) == 0:
+                self.gradient_num_list.append(gradient_num)
+            else:
+                self.gradient_num_list.append(self.gradient_num_list[-1] + gradient_num)
             tl.weighted_average(target=self.dW,
                                 sources=client_gradients,
                                 weights=torch.Tensor(data_nums))             # global gradient
@@ -156,7 +165,7 @@ class AsyncServer:
         # schedule
         participating_client_idxs = self.schedule(
             self.global_manager.clients_dict, self.schedule_config,SELECTED_EVENT)
-        self.select_clients(participating_client_idxs,SELECTED_EVENT)
+        self.select_clients(participating_client_idxs, SELECTED_EVENT)
 
         # save result
         self.save_result()
@@ -165,24 +174,15 @@ class AsyncServer:
         global_acc, global_loss = self.get_accuracy_and_loss_list()
         staleness_list = self.get_staleness_list()
         rt.save_results(config["result"]["path"],
-                        dir_name="{}_{}_{}".format(
-                            global_config["model"], global_config["dataset"], self.compressor_config["uplink"]["params"]["cr"]),
+                        dir_name="{}_{}_{}_{}".format(
+                            global_config["model"], global_config["dataset"],
+                            self.global_config["local epoch"],
+                            self.compressor_config["uplink"]["params"]["cr"]),
                         config=config,
                         global_loss=global_loss,
                         global_acc=global_acc,
-                        staleness=staleness_list)
-
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
-        elif self.model_name == 'VGG11s_3':
-            return VGG11s_3()
+                        staleness=staleness_list,
+                        gradient_num=self.gradient_num_list)
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

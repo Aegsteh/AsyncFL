@@ -9,10 +9,10 @@
         }
     },
     "global":{
-        "model": "ResNet18",
+        "model": "VGG11s_3",
         "dataset": "CIFAR10",
         "loss function": "CrossEntropy",
-        "n_clients": 5,
+        "n_clients": 6,
         "mode": "FedBuff",
         "updater":{
             "method": "K_number",
@@ -21,7 +21,7 @@
             }
         },
         "epoch": 500,
-        "schedule_period": 2,
+        "schedule_period": 1,
         "schedule":{
             "method" : "idle",
             "params":{
@@ -30,7 +30,7 @@
         },
         "delay" :{
             "mode" : "base",
-            "param": 5
+            "param": 4
         }
     },
     "device": "gpu",
@@ -41,9 +41,9 @@
     },
     "compressor":{
         "uplink":{
-            "method":"topk",
+            "method":"qsgd",
             "params":{
-                "cr": 1,
+                "cr": 0.25,
                 "error_feedback":false
             }
         },
@@ -56,6 +56,6 @@
         }
     },
     "result":{
-        "path": "FedBuff/LI_ACC_NIID_NE"
+        "path": "FedBuff/HeatMap_IID_QSGD"
     }
 }

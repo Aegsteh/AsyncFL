@@ -8,43 +8,53 @@
             "momentum": 0.9
         }
     },
-    "global":{
+    "global": {
         "model": "CNN1",
         "dataset": "FMNIST",
         "loss function": "CrossEntropy",
-        "n_clients": 5,
+        "n_clients": 3,
         "mode": "async",
-        "updater":{
+        "updater": {
             "method": "period",
-            "params":{
+            "params": {
                 "alpha": 1
             }
         },
         "epoch": 300,
-        "epoch_time": 2,
-        "schedule":{
-            "method" : "idle",
-            "params":{
-                "proportion" : 0.8
+        "schedule": {
+            "method": "idle",
+            "params": {
+                "proportion": 0.8
             }
         },
-        "delay" :{
-            "mode" : "base",
+        "delay": {
+            "mode": "base",
             "param": 4
         }
     },
     "device": "gpu",
     "data_distribution": {
-        "iid" : false,
+        "iid": false,
         "customize": false,
-        "cus_distribution": [2,2,2,2,2,2,2,2,2,2]
+        "cus_distribution": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+        ]
     },
-    "compressor":{
-        "uplink":{
-            "method":"qsgd",
-            "params":{
+    "compressor": {
+        "uplink": {
+            "method": "topk",
+            "params": {
                 "cr": 1,
-                "error_feedback":false
+                "error_feedback": false
             }
         },
         "downlink": {
@@ -55,7 +65,7 @@
             }
         }
     },
-    "result":{
-        "path": "Period/QSGD_NIID_425"
+    "result": {
+        "path": "Sync/Test"
     }
 }

@@ -17,7 +17,7 @@ from dataset.utils import get_default_data_transforms
 
 import server.ScheduleClass as sc
 
-import tools.jsonTool
+import tools.jsonTool as jsonTool
 import tools.tensorTool as tl
 import tools.resultTools as rt
 
@@ -26,7 +26,9 @@ from client.FedBuffClient import run_client
 import numpy as np
 
 # load config
-config = tools.jsonTool.generate_config('config.json')
+mode='FedBuff'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 global_config = config["global"]
 
 
@@ -162,9 +164,9 @@ class FedBuffServer:
         global_acc, global_loss = self.get_accuracy_and_loss_list()
         staleness_list = self.get_staleness_list()
         rt.save_results(config["result"]["path"],
-                        dir_name="{}_{}_{}".format(
+                        dir_name="{}_{}_{}_{}".format(
                             global_config["model"], global_config["dataset"],
-                            self.global_config["local epoch"]),
+                            self.global_config["local epoch"], self.compressor_config["uplink"]["params"]["cr"]),
                         config=config,
                         global_loss=global_loss,
                         global_acc=global_acc,
@@ -174,18 +176,6 @@ class FedBuffServer:
         # print(participating_client_idxs)
         # start
         self.start_select_clients(participating_client_idxs, SELECTED_EVENT)
-
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
-        elif self.model_name == 'VGG11s_3':
-            return VGG11s_3()
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

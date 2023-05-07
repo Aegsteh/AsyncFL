@@ -8,7 +8,7 @@ def save_to_file(path,result):
         for i in result:
             f.write(str(i)+'\n')
 
-def save_results(root=None,dir_name=None,config=None,global_loss=None,global_acc=None,staleness=None):
+def save_results(root=None,dir_name=None,config=None,global_loss=None,global_acc=None,staleness=None,gradient_num=None):
     dir_root = os.path.join('../results', root)          # experiment path
     dir_path = os.path.join(dir_root, dir_name) 
 
@@ -34,3 +34,8 @@ def save_results(root=None,dir_name=None,config=None,global_loss=None,global_acc
         staleness_name = "staleness.txt"
         staleness_path = os.path.join(dir_path,staleness_name)
         save_to_file(staleness_path,staleness)
+
+    if not gradient_num is None:
+        gradient_num_name = "gradient_num.txt"
+        gradient_num_path = os.path.join(dir_path, gradient_num_name)
+        save_to_file(gradient_num_path, gradient_num)

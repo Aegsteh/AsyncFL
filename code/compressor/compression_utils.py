@@ -6,10 +6,6 @@ import copy
 import tools.jsonTool
 import tools.utils
 
-config = tools.jsonTool.generate_config('config.json')
-device = tools.utils.get_device(config["device"])               # get training device according to os platform, gpu or cpu
-
-
 def approx_v(T, p, frac):
   if frac < 1.0:
     n_elements = T.numel()
@@ -68,7 +64,7 @@ def topk(T, hp):
   
   v, _ = approx_v(T_abs, hp_["cr"], hp_["approx"])
   
-  out = torch.where(T_abs >= v, T, torch.Tensor([0.0]).to(device))
+  out = torch.where(T_abs >= v, T, torch.Tensor([0.0]).to('cuda:0'))
   
   return out
 
@@ -132,31 +128,29 @@ def signsgd(T, hp):
   return T.sign()
 
 def qsgd(T, hp):
-  hp_ = {"cr": 8, 'approx': 1.0}
+  hp_ = {"cr": 0.125, 'approx': 1.0}
   hp_.update(hp)
 
-  shape = T.size()
-  tensor = T.flatten()
+  s = 2 ** (32 * hp_["cr"])      # the number of distributed values
 
-  norm = tensor.norm()
+  shape = T.size()        # get shape
+  tensor = T.flatten()    # flatten the tensor
+
+  norm = tensor.norm()    # get 2-norm
   norm = norm.flatten()
-  abs_gradient = tensor.abs()
+  abs_gradient = tensor.abs()     # get abs value to compute
 
-  level_float = hp_["cr"] / norm * abs_gradient
-  previous_level = level_float.floor()
-  prob = torch.empty_like(tensor).uniform_()
+  level_float = s / norm * abs_gradient         # |v_i| * s / ||v||
+  previous_level = level_float.floor()          # l/s
+  prob = torch.empty_like(tensor).uniform_()    # the prob of next level
   is_next_level = (prob < (level_float - previous_level)).type(torch.float32)
   new_level = (previous_level + is_next_level)
 
   sign = tensor.sign()
-  tensor_compressed = (new_level * sign).type(torch.int16)
-  tensor_compressed = tensor_compressed.type(torch.int8 if hp_["cr"] < 128 else torch.half)
-  tensor_compressed = tensor_compressed, norm
+  tensor_compressed = new_level * sign
 
-  tensor_compressed, norm = tensor_compressed
-
-  decode_output = tensor_compressed.type(torch.float32)
-  tensor_decompressed = norm / hp_["cr"] * decode_output
+  decode_output = tensor_compressed
+  tensor_decompressed = norm / s * decode_output
   tensor_decompressed = tensor_decompressed.view(shape)
 
   return tensor_decompressed

@@ -20,7 +20,9 @@ import time
 
 os.chdir(sys.path[0])
 
-config = jsonTool.generate_config('config.json')
+mode='FedBuff'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 device = tools.utils.get_device(config["device"])
 # get client's config
 client_config = config["client"]
@@ -171,9 +173,9 @@ class FedBuffClient:
         train_loss = train_loss / train_num
         end_time = time.time()
 
-        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {}\n".format(
+        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},CR: {}, Local Iteration: {}\n".format(
             self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time,
-            self.compression_config["uplink"]["params"]["cr"]))
+            self.compression_config["uplink"]["params"]["cr"], self.epoch_num))
 
     def synchronize_with_server(self, GLOBAL_INFO):
         self.model_timestamp = GLOBAL_INFO[0]['timestamp']
@@ -296,8 +298,7 @@ def run_client(client_temp, STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INF
 
             # transmit to server (simulate network delay)
             # simulate network delay
-            # time.sleep(client.delay *
-            #            client.compression_config["uplink"]["params"]["cr"])
+            time.sleep(client.delay * client.compression_config["uplink"]["params"]["cr"])
             # send (cid,gradient,weight,timestamp) to server
             GLOBAL_QUEUE.put(transmit_dict)
             # set selected false, sympolize the client isn't on training

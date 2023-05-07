@@ -1,3 +1,5 @@
+import copy
+
 from model import get_model
 from tools import jsonTool
 import tools.utils
@@ -17,8 +19,9 @@ import sys
 import time
 os.chdir(sys.path[0])
 
-
-config = jsonTool.generate_config('config.json')
+mode='period'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 device = tools.utils.get_device(config["device"])
 # get client's config
 client_config = config["client"]
@@ -41,7 +44,7 @@ class AsyncClient:
 
         # config
         self.client_config = client_config
-        self.compression_config = compression_config
+        self.compression_config = copy.deepcopy(compression_config)
 
         # model weight reference
         self.W = {name: value for name, value in self.model.named_parameters()}
@@ -56,7 +59,6 @@ class AsyncClient:
         self.A = {name: torch.zeros(value.shape).to(
             device) for name, value in self.W.items()}                 # Error feedback
 
-        # hyperparameters
         # local iteration num
         self.epoch_num = client_config["local epoch"]
         self.lr = client_config["optimizer"]["lr"]      # learning rate
@@ -168,26 +170,16 @@ class AsyncClient:
         train_loss = train_loss / train_num
         end_time = time.time()
 
-        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {}\n".format(
-            self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time, self.compression_config["uplink"]["params"]["cr"]))
+        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {},Local Iteration: {}\n".format(
+            self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time,
+            self.compression_config["uplink"]["params"]["cr"],
+            self.epoch_num))
 
     def synchronize_with_server(self,GLOBAL_INFO):
         self.model_timestamp = GLOBAL_INFO[0]['timestamp']
         W_G = GLOBAL_INFO[0]['weight']
         tl.to_gpu(W_G,W_G)
         tl.copy_weight(target=self.W, source=W_G)
-
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
-        elif self.model_name == 'VGG11s_3':
-            return VGG11s_3()
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':
@@ -234,17 +226,6 @@ class AsyncClient:
     def set_server(self, server):
         self.server = server
 
-
-def init_model(model_name):
-    if model_name == 'CNN1':
-        return CNN1()
-    elif model_name == 'CNN3':
-        return CNN3()
-    elif model_name == 'VGG11s':
-        return VGG11s()
-    elif model_name == 'VGG11':
-        return VGG11()
-
 def get_client_from_temp(client_temp):
     client = AsyncClient(cid=client_temp.cid,
                          dataset=client_temp.dataset,
@@ -253,7 +234,6 @@ def get_client_from_temp(client_temp):
                          delay=client_temp.delay,
                          device=device)
     return client
-
 
 def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
     # get a full attributed client
@@ -279,6 +259,7 @@ def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
             # dW = W - W_old
             # gradient computation
             tl.subtract_(client.dW, client.W, client.W_old)
+            time.sleep(client.client_config["local epoch"] / 10 * 0.5)
 
             # compress gradient
             client.compress_weight(
@@ -291,8 +272,7 @@ def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
 
             # transmit to server (simulate network delay)
             # simulate network delay
-            # time.sleep(client.delay *
-            #            client.compression_config["uplink"]["params"]["cr"])
+            time.sleep(client.delay * client.compression_config["uplink"]["params"]["cr"])
             # send (cid,gradient,weight,timestamp) to server
             GLOBAL_QUEUE.put(transmit_dict)
             # set selected false, sympolize the client isn't on training

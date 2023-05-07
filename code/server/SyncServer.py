@@ -1,5 +1,6 @@
 import torch
 from model import get_model
+import numpy as np
 
 import threading
 import queue
@@ -14,11 +15,13 @@ from dataset.utils import get_default_data_transforms
 
 import server.ScheduleClass as sc
 
-import tools.jsonTool
+import tools.jsonTool as jsonTool
 import tools.tensorTool as tl
 import tools.resultTools as rt
 
-config = tools.jsonTool.generate_config('config.json')
+mode='sync'
+config_file = jsonTool.get_config_file(mode=mode)
+config = jsonTool.generate_config(config_file)
 global_config = config["global"]
 
 class SyncServer:
@@ -77,12 +80,15 @@ class SyncServer:
     def update(self):
         for epoch in range(self.global_config["epoch"]):
             # select clients
-            participating_clients = self.schedule(self.global_manager.clients_list,self.schedule_config)
+            participating_clients = sc.random_schedule(
+                self.global_manager.clients_list, self.schedule_config)
             for client in participating_clients:
                 client.run()
             
             client_gradients = []           # save multi local_W
             data_nums = []
+
+            # compute L
             while not self.parameter_queue.empty():
                 transmit_dict = self.parameter_queue.get()   # get information from client,(cid, client_gradient, data_num, timestamp)
                 cid = transmit_dict["cid"]                                    # cid
@@ -109,16 +115,6 @@ class SyncServer:
                         global_loss=global_loss,
                         global_acc=global_acc,
                         staleness=staleness_list)
-      
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
         
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':
@@ -190,10 +186,15 @@ class SyncGlobalManager:       # Manage clients and global information
         self.dataset = dataset      # the test dataset of server, a list with 2 elements, the first is all data, the second is all label
         self.x_test = dataset[0]
         self.y_test = dataset[1]
+        if type(self.x_test) == torch.Tensor:
+            self.x_test,self.y_test = self.x_test.numpy(),self.y_test.numpy()
+        elif type(self.y_test) == list:
+            self.y_test = np.array(self.y_test)
+        # print(self.y_test.shape)
         self.transforms_train, self.transforms_eval = get_default_data_transforms(self.dataset_name)
-        self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_test, self.y_test, self.transforms_eval), 
-                                                        batch_size=8,
-                                                        shuffle=False)
+        self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_test, self.y_test, self.transforms_eval),
+                                                       batch_size=8,
+                                                       shuffle=False)
         
     
     def find_client_by_cid(self,cid):       # find client by cid
