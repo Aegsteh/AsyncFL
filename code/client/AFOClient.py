@@ -11,7 +11,7 @@ import sys
 import time
 
 from model import get_model
-os.chdir(sys.path[0])
+os.chdir(sys.path[1])
 
 
 config = jsonTool.generate_config('config.json')
