@@ -35,7 +35,7 @@ compressor_config = config["compressor"]        # gradient compression config
 
 
 class AsyncClient:
-    def  __init__(self, cid, dataset, client_config, compression_config, delay, device):
+    def  __init__(self, cid, dataset, client_config, compression_config, bandwith, device):
         self.cid = cid          # the id of client
 
         # model
@@ -60,11 +60,13 @@ class AsyncClient:
             device) for name, value in self.W.items()}                 # Error feedback
 
         # local iteration num
-        self.epoch_num = client_config["local epoch"]
+        self.local_iteration = client_config["local iteration"]
         self.lr = client_config["optimizer"]["lr"]      # learning rate
         self.momentum = client_config["optimizer"]["momentum"]  # momentum
         self.batch_size = client_config["batch_size"]       # batch size
-        self.delay = delay          # simulate network delay
+        self.bandwith = bandwith          # simulate network delay
+        self.size_of_weight = tl.getModelSize(self.model)
+        self.cr = compression_config["uplink"]["params"]["cr"]
 
         # dataset
         self.dataset_name = client_config["dataset"]
@@ -104,8 +106,8 @@ class AsyncClient:
     def __getstate__(self):
         """return a dict for current status"""
         state = self.__dict__.copy()
-        res_keys = ['cid','epoch_num','W','dW','dW_compressed','W_old','A','epoch_num','dataset',
-                    'lr', 'momentum', 'batch_size', 'delay', 'model_stamp', 'selected_event', 'stop_event',
+        res_keys = ['cid','W','dW','dW_compressed','W_old','A','local_iteration','dataset',
+                    'lr', 'momentum', 'batch_size', 'bandwith', 'model_stamp', 'selected_event', 'stop_event',
                     'client_config', 'compression_config']
         res_state = {}
         for key,value in state.items():
@@ -139,8 +141,8 @@ class AsyncClient:
         train_acc = 0.0
         train_loss = 0.0
         train_num = 0
-        # print(self.epoch_num)
-        for epoch in range(self.epoch_num):
+        # print(self.local_iteration)
+        for epoch in range(self.local_iteration):
             # print(epoch)
             try:  # Load new batch of data
                 features, labels = next(self.epoch_loader)
@@ -164,7 +166,7 @@ class AsyncClient:
             # compute training accuracy
             train_acc += torch.sum(prediction == labels.data)
             train_num += self.train_loader.batch_size
-            # print("******")
+            time.sleep(0.02 * self.cid)
         # compute average accuracy and loss
         train_acc = train_acc / train_num
         train_loss = train_loss / train_num
@@ -172,8 +174,8 @@ class AsyncClient:
 
         print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {},Local Iteration: {}\n".format(
             self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time,
-            self.compression_config["uplink"]["params"]["cr"],
-            self.epoch_num))
+            self.cr,
+            self.local_iteration))
 
     def synchronize_with_server(self,GLOBAL_INFO):
         self.model_timestamp = GLOBAL_INFO[0]['timestamp']
@@ -231,7 +233,7 @@ def get_client_from_temp(client_temp):
                          dataset=client_temp.dataset,
                          client_config=client_temp.client_config,
                          compression_config=client_temp.compression_config,
-                         delay=client_temp.delay,
+                         bandwith=client_temp.bandwith,
                          device=device)
     return client
 
@@ -254,12 +256,15 @@ def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
             # print("Client {}'s model has loaded in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
 
             # local training, SGD
+            start_train_time = time.time()
             client.train_model()           # local training
+            end_train_time = time.time()
+            mu_i = (end_train_time - start_train_time) / client.local_iteration
+            computation_consumption = mu_i * client.local_iteration
 
             # dW = W - W_old
             # gradient computation
             tl.subtract_(client.dW, client.W, client.W_old)
-            time.sleep(client.client_config["local epoch"] / 10 * 0.5)
 
             # compress gradient
             client.compress_weight(
@@ -267,12 +272,21 @@ def run_client(client_temp,STOP_EVENT,SELECTED_EVENT,GLOBAL_QUEUE,GLOBAL_INFO):
 
             # set transmit dict
             tl.to_cpu(client.dW_compressed_cpu,client.dW_compressed)
-            transmit_dict = {"cid": cid, "client_gradient": client.dW_compressed_cpu,
-                             "data_num": len(client.x_train), "timestamp": client.model_timestamp}
-
+            # transmit to server (simulate network bandwith)
+            beta = client.size_of_weight / client.bandwith
+            communication_consumption = client.cr * client.size_of_weight
+            time.sleep(beta * client.cr)
+            transmit_dict = {"cid": cid,
+                             "client_gradient": client.dW_compressed_cpu,
+                             "data_num": len(client.x_train),
+                             "timestamp": client.model_timestamp,
+                             "mu": mu_i,
+                             "computation_consumption": computation_consumption,
+                             "beta": beta,
+                             "communication_consumption": communication_consumption}
             # transmit to server (simulate network delay)
             # simulate network delay
-            time.sleep(client.delay * client.compression_config["uplink"]["params"]["cr"])
+            time.sleep(beta * client.cr)
             # send (cid,gradient,weight,timestamp) to server
             GLOBAL_QUEUE.put(transmit_dict)
             # set selected false, sympolize the client isn't on training

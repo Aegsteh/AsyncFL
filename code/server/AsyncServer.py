@@ -32,6 +32,12 @@ config_file = jsonTool.get_config_file(mode=mode)
 config = jsonTool.generate_config(config_file)
 global_config = config["global"]
 
+def update_list(lst, num):
+    if len(lst) == 0:
+        lst.append(num)
+    else:
+        lst.append(lst[-1] + num)
+
 
 class AsyncServer:
     def __init__(self, global_config, dataset, compressor_config, clients, device):
@@ -81,6 +87,9 @@ class AsyncServer:
         self.loss_list = []
         self.accuracy_list = []
         self.gradient_num_list = []
+        self.time_list = []         # used time
+        self.communication_list = []           # communication bandwith consumption
+        self.start_time = time.time()
 
         # global manager
         self.global_manager = AsyncGlobalManager(clients=clients,
@@ -123,6 +132,7 @@ class AsyncServer:
             data_nums = []
             stalenesses = []
             gradient_num = 0
+            communication_cost = 0
             while not GLOBAL_QUEUE.empty():
                 # get information from client,(cid, client_gradient, data_num, timestamp)
                 transmit_dict = GLOBAL_QUEUE.get()
@@ -138,10 +148,17 @@ class AsyncServer:
                 staleness = self.current_epoch - timestamp                  # staleness
                 gradient_num += 1
 
+                # communication traffic consumption
+                communication_consumption_cid = transmit_dict["communication_consumption"]
+                communication_cost += communication_consumption_cid
+
                 client_gradients.append(client_gradient)
                 data_nums.append(data_num)
                 stalenesses.append(staleness)
                 self.staleness_list.append(staleness)
+            
+            self.time_list.append(time.time() - self.start_time)
+            update_list(self.communication_list, communication_cost)
             if len(self.gradient_num_list) == 0:
                 self.gradient_num_list.append(gradient_num)
             else:
@@ -174,15 +191,16 @@ class AsyncServer:
         global_acc, global_loss = self.get_accuracy_and_loss_list()
         staleness_list = self.get_staleness_list()
         rt.save_results(config["result"]["path"],
-                        dir_name="{}_{}_{}_{}".format(
+                        dir_name="{}_{}_{}_Period".format(
                             global_config["model"], global_config["dataset"],
-                            self.global_config["local epoch"],
-                            self.compressor_config["uplink"]["params"]["cr"]),
+                            self.global_config["local iteration"]),
                         config=config,
                         global_loss=global_loss,
                         global_acc=global_acc,
                         staleness=staleness_list,
-                        gradient_num=self.gradient_num_list)
+                        gradient_num=self.gradient_num_list,
+                        communication_cost=self.communication_list,
+                        time=self.time_list)
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

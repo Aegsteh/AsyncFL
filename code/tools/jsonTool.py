@@ -25,5 +25,7 @@ def get_config_file(mode):
         json_file_name = 'SyncConfig.json'
     elif mode == 'afo':
         json_file_name = 'AfoConfig.json'
+    elif mode == 'crafl':
+        json_file_name = 'CRAFLConfig.json'
     json_path = os.path.join('../config', json_file_name)
     return json_path

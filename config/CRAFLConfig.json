@@ -12,8 +12,10 @@
         "model": "CNN1",
         "dataset": "FMNIST",
         "loss function": "CrossEntropy",
+        "local iteration": 40,
+        "gamma": 0.01,
         "n_clients": 5,
-        "mode": "async",
+        "mode": "crafl",
         "updater": {
             "method": "period",
             "params": {
@@ -21,37 +23,35 @@
             }
         },
         "epoch": 300,
+        "p": 2,
+        "tau_threshold": 1,
         "schedule": {
-            "method": "random",
+            "method": "idle",
             "params": {
-                "proportion": 1
+                "proportion": 0.8
             }
         },
         "bandwith": {
             "mode": "base",
             "param": 1.5
-        }
+        },
+        "adaptive": true
     },
     "device": "gpu",
     "data_distribution": {
-        "iid": false,
-        "customize": false,
+        "iid": true,
+        "customize": true,
         "cus_distribution": [
+            10,
+            5,
+            3,
             2,
-            2,
-            2,
-            2,
-            2,
-            2,
-            2,
-            2,
-            2,
-            2
+            1
         ]
     },
     "compressor": {
         "uplink": {
-            "method": "none",
+            "method": "topk",
             "params": {
                 "cr": 1,
                 "error_feedback": false
@@ -66,6 +66,6 @@
         }
     },
     "result": {
-        "path": "DiffAlg/Test"
+        "path": "DiffAlg/Test_iid"
     }
 }

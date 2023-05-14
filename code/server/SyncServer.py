@@ -24,6 +24,12 @@ config_file = jsonTool.get_config_file(mode=mode)
 config = jsonTool.generate_config(config_file)
 global_config = config["global"]
 
+def update_list(lst, num):
+    if len(lst) == 0:
+        lst.append(num)
+    else:
+        lst.append(lst[-1] + num)
+
 class SyncServer:
     def __init__(self,global_config,dataset,compressor_config,clients,device):
         # global_config
@@ -63,6 +69,8 @@ class SyncServer:
         self.staleness_list = []
         self.loss_list = []
         self.accuracy_list = []
+        self.time_list = []         # used time
+        self.communication_list = []           # communication bandwith consumption
 
         # global manager
         self.global_manager = SyncGlobalManager(clients=clients,
@@ -80,23 +88,38 @@ class SyncServer:
     def update(self):
         for epoch in range(self.global_config["epoch"]):
             # select clients
-            participating_clients = sc.random_schedule(
-                self.global_manager.clients_list, self.schedule_config)
+            participating_clients = sc.random_schedule(self.global_manager.clients_list, self.schedule_config)
             for client in participating_clients:
                 client.run()
             
             client_gradients = []           # save multi local_W
             data_nums = []
+            self.current_epoch += 1
 
-            # compute L
+            # compute 
+            max_time = -1
+            communication_cost = 0
             while not self.parameter_queue.empty():
                 transmit_dict = self.parameter_queue.get()   # get information from client,(cid, client_gradient, data_num, timestamp)
                 cid = transmit_dict["cid"]                                    # cid
                 client_gradient = transmit_dict["client_gradient"]            # client gradient
                 data_num = transmit_dict["data_num"]                          # number of data samples
 
+                # total computation time
+                computation_time_cid = transmit_dict["computation_consumption"]
+                # communication traffic consumption
+                communication_consumption_cid = transmit_dict["communication_consumption"]
+                communication_cost += communication_consumption_cid
+                # communication time
+                communication_time_cid = transmit_dict["communication_time"]
+                max_time = max(communication_time_cid + computation_time_cid, max_time)     # total time
+
+
                 client_gradients.append(client_gradient)            
                 data_nums.append(data_num)
+            
+            update_list(self.time_list, max_time)
+            update_list(self.communication_list, communication_cost)
 
             data_nums = torch.Tensor(data_nums)
             tl.weighted_average(target=self.dW, 
@@ -107,14 +130,18 @@ class SyncServer:
             self.eval_model()
 
             # save results
-            global_loss, global_acc = self.get_accuracy_and_loss_list()
+            global_acc ,global_loss= self.get_accuracy_and_loss_list()
             staleness_list = self.get_staleness_list()
             rt.save_results(config["result"]["path"],
-                        dir_name="{}_{}_{}".format(global_config["model"],global_config["dataset"],self.compressor_config["uplink"]["params"]["cr"]),
+                        dir_name="{}_{}_{}_FedAvg".format(global_config["model"],global_config["dataset"],
+                                                   self.global_config["local iteration"]),
                         config=config,
                         global_loss=global_loss,
                         global_acc=global_acc,
-                        staleness=staleness_list)
+                        staleness=staleness_list,
+                        communication_cost=self.communication_list,
+                        time=self.time_list
+                        )
         
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':

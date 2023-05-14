@@ -1,4 +1,6 @@
-from model.CNN import CNN1, CNN3, VGG11s, VGG11, VGG11s_3
+import copy
+
+from model import get_model
 from tools import jsonTool
 import tools.utils
 import tools.tensorTool as tl
@@ -9,18 +11,15 @@ import numpy as np
 from dataset.utils import get_default_data_transforms
 from dataset.CustomerDataset import CustomerDataset
 
-from model import get_model
-
 from multiprocessing import Process
 import multiprocessing
 import torch
 import os
 import sys
 import time
-
 os.chdir(sys.path[0])
 
-mode='FedBuff'
+mode = 'crafl'
 config_file = jsonTool.get_config_file(mode=mode)
 config = jsonTool.generate_config(config_file)
 device = tools.utils.get_device(config["device"])
@@ -32,40 +31,41 @@ client_config["model"] = global_config["model"]
 client_config["dataset"] = global_config["dataset"]
 client_config["loss function"] = global_config["loss function"]
 
-compressor_config = config["compressor"]  # gradient compression config
+compressor_config = config["compressor"]        # gradient compression config
 
 
-class FedBuffClient:
+class CRAFLClient:
     def __init__(self, cid, dataset, client_config, compression_config, bandwith, device):
-        self.cid = cid  # the id of client
+        self.cid = cid          # the id of client
 
         # model
         self.model_name = client_config["model"]
-        self.model = get_model(self.model_name).to(device)  # mechine learning model
+        self.model = get_model(self.model_name).to(
+            device)       # mechine learning model
 
         # config
         self.client_config = client_config
-        self.compression_config = compression_config
+        self.compression_config = copy.deepcopy(compression_config)
 
         # model weight reference
         self.W = {name: value for name, value in self.model.named_parameters()}
         self.dW_compressed = {name: torch.zeros(value.shape).to(
-            device) for name, value in self.W.items()}  # compressed gradient
-        self.dW_compressed_cpu = {name: torch.zeros(value.shape) for name, value in self.W.items()}
+            device) for name, value in self.W.items()}     # compressed gradient
+        self.dW_compressed_cpu = {name: torch.zeros(
+            value.shape) for name, value in self.W.items()}
         self.dW = {name: torch.zeros(value.shape).to(
-            device) for name, value in self.W.items()}  # gradient
+            device) for name, value in self.W.items()}                # gradient
         # global model before local training
         self.W_old = {name: torch.zeros(value.shape).to(
             device) for name, value in self.W.items()}
         self.A = {name: torch.zeros(value.shape).to(
-            device) for name, value in self.W.items()}  # Error feedback
+            device) for name, value in self.W.items()}                 # Error feedback
 
-        # hyperparameters
         # local iteration num
         self.local_iteration = client_config["local iteration"]
-        self.lr = client_config["optimizer"]["lr"]  # learning rate
+        self.lr = client_config["optimizer"]["lr"]      # learning rate
         self.momentum = client_config["optimizer"]["momentum"]  # momentum
-        self.batch_size = client_config["batch_size"]  # batch size
+        self.batch_size = client_config["batch_size"]       # batch size
         self.bandwith = bandwith          # simulate network bandwith
         self.size_of_weight = tl.getModelSize(self.model)
         self.cr = compression_config["uplink"]["params"]["cr"]
@@ -77,15 +77,14 @@ class FedBuffClient:
         self.split_train_test(proportion=0.8)
         self.transforms_train, self.transforms_eval = get_default_data_transforms(
             self.dataset_name)
-        self.train_loader = torch.utils.data.DataLoader(
-            CustomerDataset(self.x_train, self.y_train, self.transforms_train),
-            batch_size=self.batch_size,
-            shuffle=False)
+        self.train_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_train, self.y_train, self.transforms_train),
+                                                        batch_size=self.batch_size,
+                                                        shuffle=False)
         self.test_loader = torch.utils.data.DataLoader(CustomerDataset(self.x_test, self.y_test, self.transforms_eval),
                                                        batch_size=self.batch_size,
                                                        shuffle=False)
 
-        self.model_timestamp = 0  # timestamp, to compute staleness for server
+        self.model_timestamp = 0        # timestamp, to compute staleness for server
 
         # loss function
         # loss function
@@ -93,17 +92,17 @@ class FedBuffClient:
         self.loss_function = self.init_loss_fun()
 
         # optimizer
-        self.optimizer_hp = client_config["optimizer"]  # optimizer
+        self.optimizer_hp = client_config["optimizer"]      # optimizer
         self.optimizer = self.init_optimizer()
 
         # compressor
         self.compression_config = compression_config
 
         # training device
-        self.device = device  # training device (cpu or gpu)
+        self.device = device            # training device (cpu or gpu)
 
         # multiple process valuable
-        self.selected_event = False  # indicate if the client is selected
+        self.selected_event = False     # indicate if the client is selected
         self.stop_event = False
 
     def __getstate__(self):
@@ -144,7 +143,6 @@ class FedBuffClient:
         train_acc = 0.0
         train_loss = 0.0
         train_num = 0
-        # print(self.local_iteration)
         for epoch in range(self.local_iteration):
             # print(epoch)
             try:  # Load new batch of data
@@ -156,46 +154,38 @@ class FedBuffClient:
             # set accumulate gradient to zero
             self.optimizer.zero_grad()
             outputs = self.model.to(self.device)(
-                features)  # predict
+                features)                          # predict
             loss = self.loss_function(
-                outputs, labels)  # compute loss
+                outputs, labels)              # compute loss
             # backward, compute gradient
             loss.backward()
-            self.optimizer.step()  # update
+            self.optimizer.step()                                   # update
 
-            train_loss += loss.item()  # compute total loss
+            train_loss += loss.item()                               # compute total loss
             # get prediction label
             _, prediction = torch.max(outputs.data, 1)
             # compute training accuracy
             train_acc += torch.sum(prediction == labels.data)
             train_num += self.train_loader.batch_size
             time.sleep(0.02 * self.cid)
-        # compute average accuracy and loss
         train_acc = train_acc / train_num
         train_loss = train_loss / train_num
         end_time = time.time()
 
-        print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},CR: {}, Local Iteration: {}\n".format(
-            self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time,
-            self.compression_config["uplink"]["params"]["cr"], self.local_iteration))
+        # print("Client {}, Global Epoch {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {},Local Iteration: {}\n".format(
+        #     self.cid, self.model_timestamp, train_acc, train_loss, end_time - start_time,
+        #     self.cr,
+        #     self.local_iteration))
 
     def synchronize_with_server(self, GLOBAL_INFO):
-        self.model_timestamp = GLOBAL_INFO[0]['timestamp']
-        W_G = GLOBAL_INFO[0]['weight']
+        self.model_timestamp = GLOBAL_INFO[self.cid]['timestamp']
+        W_G = GLOBAL_INFO[self.cid]['weight']
         tl.to_gpu(W_G, W_G)
         tl.copy_weight(target=self.W, source=W_G)
-
-    def init_model(self):
-        if self.model_name == 'CNN1':
-            return CNN1()
-        elif self.model_name == 'CNN3':
-            return CNN3()
-        elif self.model_name == 'VGG11s':
-            return VGG11s()
-        elif self.model_name == 'VGG11':
-            return VGG11()
-        elif self.model_name == 'VGG11s_3':
-            return VGG11s_3()
+        self.local_iteration = GLOBAL_INFO[self.cid]["local iteration"]
+        self.cr = GLOBAL_INFO[self.cid]["cr"]
+        print('Client - {}, local iteration = {}, cr = {}'.format(self.cid,
+              self.local_iteration, self.cr))
 
     def init_loss_fun(self):
         if self.loss_fun_name == 'CrossEntropy':
@@ -210,8 +200,8 @@ class FedBuffClient:
 
     def split_train_test(self, proportion):
         # proportion is the proportion of the training set on the entire data set
-        self.data = self.dataset[0]  # get raw data from dataset
-        self.label = self.dataset[1]  # get label from dataset
+        self.data = self.dataset[0]     # get raw data from dataset
+        self.label = self.dataset[1]    # get label from dataset
 
         # package shuffle
         assert len(self.data) == len(self.label)
@@ -225,10 +215,10 @@ class FedBuffClient:
         train_num = int(proportion * len(self.data))
         self.train_num = train_num
         self.test_num = len(self.data) - train_num
-        self.x_train = data[:train_num]  # the data of training set
-        self.y_train = label[:train_num]  # the label of training set
-        self.x_test = data[train_num:]  # the data of testing set
-        self.y_test = label[train_num:]  # the label of testing set
+        self.x_train = data[:train_num]              # the data of training set
+        self.y_train = label[:train_num]            # the label of training set
+        self.x_test = data[train_num:]               # the data of testing set
+        self.y_test = label[train_num:]             # the label of testing set
 
     def get_model_params(self):
         return self.model.state_dict()
@@ -244,7 +234,7 @@ class FedBuffClient:
 
 
 def get_client_from_temp(client_temp):
-    client = FedBuffClient(cid=client_temp.cid,
+    client = CRAFLClient(cid=client_temp.cid,
                          dataset=client_temp.dataset,
                          client_config=client_temp.client_config,
                          compression_config=client_temp.compression_config,
@@ -256,7 +246,7 @@ def get_client_from_temp(client_temp):
 def run_client(client_temp, STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INFO):
     # get a full attributed client
     client = get_client_from_temp(client_temp)
-    cid = client.cid  # get cid for convenience
+    cid = client.cid            # get cid for convenience
     # if the training process is going on
     while not STOP_EVENT.value:
         # if the client is selected by scheduler
@@ -269,8 +259,7 @@ def run_client(client_temp, STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INF
 
             # W_old = W
             tl.copy_weight(client.W_old, client.W)
-            # print("Client {}'s model has loaded in global epoch {}\n".format(self.cid,self.model_timestamp["t"]))
-
+            
             # local training, SGD
             start_train_time = time.time()
             client.train_model()           # local training
@@ -281,16 +270,19 @@ def run_client(client_temp, STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INF
             # dW = W - W_old
             # gradient computation
             tl.subtract_(client.dW, client.W, client.W_old)
-            
+
             # compress gradient
-            client.compress_weight(compression_config=client.compression_config["uplink"])
+            client.compress_weight(
+                compression_config=client.compression_config["uplink"])
 
             # set transmit dict
             tl.to_cpu(client.dW_compressed_cpu, client.dW_compressed)
+
             # transmit to server (simulate network bandwith)
             beta = client.size_of_weight / client.bandwith
             communication_consumption = client.cr * client.size_of_weight
             time.sleep(beta * client.cr)
+            # send (cid,gradient,weight,timestamp) to server
             transmit_dict = {"cid": cid,
                              "client_gradient": client.dW_compressed_cpu,
                              "data_num": len(client.x_train),
@@ -299,7 +291,6 @@ def run_client(client_temp, STOP_EVENT, SELECTED_EVENT, GLOBAL_QUEUE, GLOBAL_INF
                              "computation_consumption": computation_consumption,
                              "beta": beta,
                              "communication_consumption": communication_consumption}
-            # send (cid,gradient,weight,timestamp) to server
             GLOBAL_QUEUE.put(transmit_dict)
             # set selected false, sympolize the client isn't on training
             SELECTED_EVENT[cid] = False

@@ -25,7 +25,7 @@ config_file = jsonTool.get_config_file(mode=mode)
 config = jsonTool.generate_config(config_file)
 
 class SyncClient():
-    def __init__(self,cid,dataset,client_config,compression_config,device):
+    def __init__(self,cid, dataset, client_config, compression_config, bandwith, device):
         self.cid = cid          # the id of client
 
         # model
@@ -39,10 +39,13 @@ class SyncClient():
         self.A = {name : torch.zeros(value.shape).to(device) for name, value in self.W.items()}                 # Error feedback
 
         # hyperparameters
-        self.epoch_num = client_config["local epoch"]      # local iteration num
+        self.local_iteration = client_config["local iteration"]      # local iteration num
         self.lr = client_config["optimizer"]["lr"]      # learning rate
         self.momentum = client_config["optimizer"]["momentum"]  # momentum
         self.batch_size = client_config["batch_size"]       # batch size
+        self.bandwith = bandwith          # simulate network bandwith
+        self.size_of_weight = tl.getModelSize(self.model)
+        self.cr = compression_config["uplink"]["params"]["cr"]
 
         # dataset
         self.dataset_name = client_config["dataset"]
@@ -70,12 +73,19 @@ class SyncClient():
         
         # training device
         self.device = device            # training device (cpu or gpu)
+
+        self.t = 0
     
     def run(self):          # run the client process
         self.synchronize_with_server(self.server)
-
+        # self.t += 1
+        # d_dW = copy.deepcopy(self.dW)
+        # dW_old = copy.deepcopy(self.dW)
         # Training mode
+        start_train_time = time.time()
         self.model.train()
+        end_train_time = time.time()
+        computation_consumption = end_train_time - start_train_time
 
         # W_old = W
         tl.copy_weight(self.W_old,self.W)
@@ -86,17 +96,25 @@ class SyncClient():
         # dW = W - W_old
         tl.subtract_(self.dW,self.W,self.W_old)     # gradient computation
 
-        
+        # if self.t > 1:
+        #     tl.subtract_(d_dW, self.dW, dW_old)
+        #     up = tl.norm_2(d_dW)
+        #     down = tl.norm_2(self.dW)
+        #     print('L = {}'.format(up / down))
 
         # compress gradient
         self.compress_weight(compression_config=self.compression_config["uplink"])
+        beta = self.size_of_weight / self.bandwith          # full model transmit time
+        communication_consumption = self.cr * self.size_of_weight
 
         # set transmit dict
-        transmit_dict = {}
-        transmit_dict["cid"] = self.cid
-        transmit_dict["client_gradient"]= self.dW_compressed       # client gradient
-        transmit_dict["data_num"] = len(self.x_train)                          # number of data samples
-        
+        transmit_dict = {"cid": self.cid,
+                             "client_gradient": self.dW_compressed,
+                             "data_num": len(self.x_train), 
+                             "computation_consumption": computation_consumption+ self.local_iteration * self.cid * 0.02,
+                             "communication_time": beta,
+                             "communication_consumption": communication_consumption}
+      
         # transmit to server
         self.server.receive(transmit_dict)    # send (cid,gradient,weight,timestamp) to server
     
@@ -118,7 +136,7 @@ class SyncClient():
         train_acc = 0.0
         train_loss = 0.0
         train_num = 0
-        for epoch in range(self.epoch_num):
+        for epoch in range(self.local_iteration):
             try: # Load new batch of data
                 features, labels = next(self.epoch_loader)
             except: # Next epoch
@@ -135,11 +153,12 @@ class SyncClient():
             _, prediction = torch.max(outputs.data, 1)              # get prediction label
             train_acc += torch.sum(prediction == labels.data)       # compute training accuracy
             train_num += self.train_loader.batch_size
+            # time.sleep(0.02 * self.cid)
         
         train_acc = train_acc / train_num              # compute average accuracy and loss
         train_loss = train_loss / train_num
         end_time = time.time()
-        print("Client {}, Train Accuracy: {} , Train Loss: {}, Used Time: {},cr: {}\n".format(self.cid, train_acc, train_loss, end_time - start_time,self.compression_config["uplink"]["params"]["cr"]))
+        print("Client {}, Train Accuracy: {} , Train Loss: {}, Used Time: {}\n".format(self.cid, train_acc, train_loss, end_time - start_time,self.compression_config["uplink"]["params"]["cr"]))
     
     def synchronize_with_server(self,server):
         tl.copy_weight(target=self.W, source=server.W)

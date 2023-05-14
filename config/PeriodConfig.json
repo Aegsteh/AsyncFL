@@ -1,48 +1,59 @@
 {
     "client": {
         "batch_size": 64,
-        "local epoch": 15,
+        "local iteration": 40,
         "optimizer": {
             "method": "SGD",
             "lr": 0.01,
             "momentum": 0.9
         }
     },
-    "global":{
+    "global": {
         "model": "CNN1",
         "dataset": "FMNIST",
         "loss function": "CrossEntropy",
         "n_clients": 5,
         "mode": "period",
-        "updater":{
+        "updater": {
             "method": "period",
-            "params":{
+            "params": {
                 "alpha": 1
             }
         },
         "epoch": 300,
         "epoch_time": 2,
-        "schedule":{
-            "method" : "idle",
-            "params":{
-                "proportion" : 0.8
+        "schedule": {
+            "method": "idle",
+            "params": {
+                "proportion": 0.8
             }
         },
-        "delay" :{
-            "mode" : "base",
-            "param": 4
+        "bandwith": {
+            "mode": "base",
+            "param": 1.5
         }
     },
     "device": "gpu",
     "data_distribution": {
-        "iid" : false,
+        "iid": false,
         "customize": false,
-        "cus_distribution": [2,2,2,2,2,2,2,2,2,2]
+        "cus_distribution": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+        ]
     },
-    "compressor":{
-        "uplink":{
-            "method":"topk",
-            "params":{
+    "compressor": {
+        "uplink": {
+            "method": "none",
+            "params": {
                 "cr": 1,
                 "error_feedback": true
             }
@@ -55,7 +66,7 @@
             }
         }
     },
-    "result":{
-        "path": "Period/Heatmap_TOPK3"
+    "result": {
+        "path": "DiffAlg/Test"
     }
 }

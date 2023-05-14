@@ -1,50 +1,61 @@
 {
     "client": {
         "batch_size": 64,
-        "local epoch": 15,
+        "local iteration": 40,
         "optimizer": {
             "method": "SGD",
             "lr": 0.01,
             "momentum": 0.9
         }
     },
-    "global":{
-        "model": "VGG11s_3",
-        "dataset": "CIFAR10",
+    "global": {
+        "model": "CNN1",
+        "dataset": "FMNIST",
         "loss function": "CrossEntropy",
-        "n_clients": 6,
+        "n_clients": 5,
         "mode": "FedBuff",
-        "updater":{
+        "updater": {
             "method": "K_number",
-            "params":{
-                "K": 5
+            "params": {
+                "K": 4
             }
         },
-        "epoch": 500,
+        "epoch": 200,
         "schedule_period": 1,
-        "schedule":{
-            "method" : "idle",
-            "params":{
-                "proportion" : 0.8
+        "schedule": {
+            "method": "idle",
+            "params": {
+                "proportion": 0.8
             }
         },
-        "delay" :{
-            "mode" : "base",
-            "param": 4
+        "bandwith": {
+            "mode": "base",
+            "param": 1.5
         }
     },
     "device": "gpu",
     "data_distribution": {
-        "iid" : false,
+        "iid": true,
         "customize": false,
-        "cus_distribution": [2,2,2,2,2,2,2,2,2,2]
+        "cus_distribution": [
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+        ]
     },
-    "compressor":{
-        "uplink":{
-            "method":"qsgd",
-            "params":{
-                "cr": 0.25,
-                "error_feedback":false
+    "compressor": {
+        "uplink": {
+            "method": "none",
+            "params": {
+                "cr": 0.5,
+                "error_feedback": true
             }
         },
         "downlink": {
@@ -55,7 +66,7 @@
             }
         }
     },
-    "result":{
-        "path": "FedBuff/HeatMap_IID_QSGD"
+    "result": {
+        "path": "DiffAlg/Test"
     }
 }
